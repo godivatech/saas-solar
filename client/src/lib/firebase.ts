@@ -25,6 +25,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// PRODUCTION DEBUG LOGS
+console.log("--- Firebase Environment Check ---");
+console.log("Project ID exists:", !!firebaseConfig.projectId);
+console.log("API Key exists:", !!firebaseConfig.apiKey);
+console.log("App ID exists:", !!firebaseConfig.appId);
+console.log("----------------------------------");
+
 // Utility function to check if we have valid Firebase configuration
 export const hasValidFirebaseConfig = () => {
   // Firebase is configured with hardcoded values for this project
