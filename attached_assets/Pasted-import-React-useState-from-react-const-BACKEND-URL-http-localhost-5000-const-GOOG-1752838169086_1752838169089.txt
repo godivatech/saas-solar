@@ -1,0 +1,126 @@
+import React, { useState } from "react";
+
+const BACKEND_URL = "http://localhost:5000";
+const GOOGLE_MAPS_API_KEY = "AIzaSyCnliNdZ3VhFbVLfLu6mOJGnibr-s8cwLA"; // Replace with your API key
+
+function App() {
+  const [location, setLocation] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Get geolocation and convert to address
+  const fetchLocation = async () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject("Geolocation not supported");
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            // Fetch address from Google Maps Geocoding API
+            /*  */
+            try {
+              const response = await fetch(
+                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`
+              );
+              const data = await response.json();
+              if (data.status === "OK") {
+                const address =
+                  data.results[0]?.formatted_address || "Unknown location";
+                resolve(address);
+              } else {
+                reject("Unable to fetch address");
+              }
+            } catch (err) {
+              reject("Error fetching address");
+            }
+          },
+          (err) => reject("Permission denied or error getting location")
+        );
+      }
+    });
+  };
+  /* co */
+  const handleAction = async (action) => {
+    setLoading(true);
+    setStatus("Getting location...");
+    try {
+      const address = await fetchLocation();
+      setLocation(address);
+      setStatus("Sending to backend...");
+      // For demo, use a static userId
+      const userId = "user1";
+      const endpoint = action === "checkin" ? "/checkin" : "/checkout";
+      const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, location: address }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setStatus(
+          `Successfully ${action === "checkin" ? "checked in" : "checked out"}`
+        );
+      } else {
+        setStatus("Failed to send to backend");
+      }
+    } catch (err) {
+      setStatus(err.toString());
+    }
+    setLoading(false);
+  };
+
+  const handleRefresh = () => {
+    setLocation("");
+    setStatus("");
+  };
+
+  return (
+    <div
+      style={{
+        maxWidth: 400,
+        margin: "40px auto",
+        padding: 20,
+        border: "1px solid #ccc",
+        borderRadius: 8,
+      }}
+    >
+      <h2>Attendance System</h2>
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center" }}>
+        <strong>Current Location:</strong>
+        <div style={{ minHeight: 24, marginLeft: 8, flex: 1 }}>
+          {location || "Not fetched yet"}
+        </div>
+        <button
+          onClick={handleRefresh}
+          style={{
+            marginLeft: 8,
+            padding: "2px 8px",
+            fontSize: 12,
+            borderRadius: 4,
+          }}
+          title="Refresh/Clear Location"
+          disabled={loading}
+        >
+          ⟳
+        </button>
+      </div>
+      <button
+        onClick={() => handleAction("checkin")}
+        disabled={loading}
+        style={{ marginRight: 8 }}
+      >
+        Check In
+      </button>
+      <button onClick={() => handleAction("checkout")} disabled={loading}>
+        Check Out
+      </button>
+      <div style={{ marginTop: 24, color: "#555" }}>{status}</div>
+      <div style={{ marginTop: 24, fontSize: 12, color: "#888" }}>
+        (You need to set your Google Maps API key in App.js)
+      </div>
+    </div>
+  );
+}
+
+export default App;

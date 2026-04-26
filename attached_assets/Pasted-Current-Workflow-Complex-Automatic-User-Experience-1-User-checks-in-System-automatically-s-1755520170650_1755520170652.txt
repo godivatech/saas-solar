@@ -1,0 +1,51 @@
+Current Workflow (Complex & Automatic)
+User Experience:
+1.	User checks in → System automatically starts tracking time
+2.	User works → System silently calculates if they're going into OT based on department rules
+3.	User checks out → System automatically adds OT hours if they worked past department time
+4.	Problem: User has no control and doesn't know when OT started
+Issues with Current System:
+•	❌ No user control - OT happens automatically
+•	❌ Confusing - Users don't know when they entered OT
+•	❌ Department dependent - Complex timing rules determine OT
+•	❌ No explicit consent - OT gets added without user knowing
+•	❌ Hard to dispute - No clear OT start/end evidence
+New Manual OT Workflow (Simple & Clear)
+User Experience:
+1.	Regular Work Day:
+•	Check In → Work → Check Out (same as before)
+2.	When OT is Needed:
+•	Click "Start OT" → Take selfie → Work extra hours
+•	Click "End OT" → Take selfie → Done!
+Benefits of New System:
+•	✅ Crystal clear - User explicitly chooses when to do OT
+•	✅ Simple buttons - Just "Start OT" and "End OT"
+•	✅ Visual evidence - Photos prove OT start and end
+•	✅ Location proof - Auto-captured location for both OT actions
+•	✅ User control - No surprise OT calculations
+•	✅ Easy to understand - Even non-technical users get it immediately
+Side-by-Side Comparison
+Aspect	Current (Auto)	New (Manual)
+User Control	None - automatic	Full - user decides
+Clarity	Confusing rules	Clear buttons
+Evidence	Only check-in/out photos	Photos for OT start/end too
+Disputes	Hard to verify	Clear photo + location proof
+Learning Curve	Need to understand department timing	Just click OT buttons
+Flexibility	Rigid department rules	Work OT anytime needed
+Real Example Scenarios
+Scenario 1: Emergency Work
+•	Old Way: User works late → System may/may not count as OT depending on department rules → Confusion
+•	New Way: User clicks "Start OT" → Works → Clicks "End OT" → Clear OT record with photos
+Scenario 2: Early Morning Work
+•	Old Way: User comes early → Complex calculation if it counts as OT → No clear evidence
+•	New Way: User clicks "Start OT" before regular hours → Clear record with selfie and location
+Scenario 3: Weekend Work
+•	Old Way: Department rules might not handle weekends properly → Confusion
+•	New Way: User clicks "Start OT" → Works → Clicks "End OT" → Simple and clear
+Why New Workflow is Much Easier
+1.	No Mental Math: Users don't need to calculate department timing rules
+2.	Explicit Actions: Every OT session requires deliberate user action
+3.	Visual Feedback: Users see exactly when OT starts and ends
+4.	Proof of Work: Photo evidence makes disputes rare
+5.	Works Anywhere: Location auto-capture means no manual address entry
+The new workflow transforms OT from a complex, automatic calculation into two simple button clicks. This is much easier for users to understand and use!

@@ -1,0 +1,81 @@
+Manual Overtime System Implementation Plan
+Project Overview
+Objective: Replace automatic overtime calculation with manual OT buttons that capture selfies and location data using Google Maps API reverse geocoding.
+Current System: Automatic OT calculation based on department timing rules
+New System: User-controlled OT sessions with photo and location evidence
+________________________________________
+Implementation Phases
+Phase 1: Schema Updates
+Files to modify:
+•	shared/schema.ts
+Changes:
+•	Add new OT-specific fields to attendance schema
+•	Add manual OT session tracking fields
+•	Maintain backward compatibility
+Phase 2: Backend Services
+Files to modify:
+•	server/services/manual-ot-service.ts (new)
+•	server/routes.ts
+•	server/storage.ts
+Changes:
+•	Create ManualOTService for OT operations
+•	Add new API endpoints for OT start/end
+•	Update storage interface for OT operations
+•	Disable automatic OT in EnterpriseTimeService
+Phase 3: Frontend Components
+Files to modify:
+•	client/src/components/attendance/manual-ot-start.tsx (new)
+•	client/src/components/attendance/manual-ot-end.tsx (new)
+•	client/src/pages/attendance.tsx
+Changes:
+•	Create OT-specific modal components
+•	Reuse existing camera and location logic
+•	Add smart button availability logic
+•	Integrate with attendance page
+Phase 4: UI Integration
+Files to modify:
+•	client/src/pages/attendance.tsx
+Changes:
+•	Add OT button states and visibility logic
+•	Integrate with existing attendance flow
+•	Add OT status indicators
+Phase 5: Testing & Validation
+•	Test complete OT workflow
+•	Validate data integrity
+•	Test Google Maps API integration
+•	Verify photo upload functionality
+________________________________________
+Detailed Implementation Plan
+Schema Changes
+// New fields for manual OT tracking
+otStartTime: z.date().optional(),
+otEndTime: z.date().optional(),
+otStartLatitude: z.string().optional(),
+otStartLongitude: z.string().optional(),
+otStartImageUrl: z.string().optional(),
+otEndLatitude: z.string().optional(),
+otEndLongitude: z.string().optional(),
+otEndImageUrl: z.string().optional(),
+otStartAddress: z.string().optional(),
+otEndAddress: z.string().optional(),
+isManualOT: z.boolean().default(false),
+manualOTHours: z.number().optional(),
+otStatus: z.enum(["not_started", "in_progress", "completed"]).default("not_started"),
+New API Endpoints
+POST /api/attendance/ot-start     // Start manual OT session
+POST /api/attendance/ot-end       // End manual OT session
+GET  /api/attendance/ot-status    // Get current OT status
+Smart Button Logic
+// Button availability based on department timing
+function getOTButtonState(currentTime, departmentTiming, attendance) {
+  // Early arrival OT: before department start
+  // Late departure OT: after department end
+  // Weekend/Holiday OT: always available
+  // During regular hours: disabled
+}
+Component Architecture
+•	ManualOTStart: Selfie capture + location + OT start
+•	ManualOTEnd: Selfie capture + location + OT duration calculation
+•	OTStatusIndicator: Shows current OT state
+•	OTButtons: Smart button availability logic
+

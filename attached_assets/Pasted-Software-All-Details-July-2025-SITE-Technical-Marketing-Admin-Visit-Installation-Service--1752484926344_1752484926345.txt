@@ -1,0 +1,236 @@
+Software All Details – July 2025
+
+SITE
+{(Technical/Marketing/Admin)
+Visit /Installation/Service/Purchase/EB Office/AMC/Bank/Other}
+1.TECHNICAL:
+Site in time photo with location 
+i) Customer Details:
+Name, Mobile No, Address
+Selection Box - Residential/Commercial/Agri/Other
+Selection Box - On grid/Off grid/Hy-brid/Solar panel/Camera/Water Pump/Water heater/Lights &Accessories/Others.(Multiple selections)
+Type of Work:
+Selection Box - Installation/Wifi Configuration/AMC/Service/Electrical Fault/Inverter Fault/Solar Panel Fault/Wiring Issue/Structure/Welding Work/Site visit/Light Installation/Camera Fault/Light Fault/Repair/Painting/Cleaning/Others.
+Working Status :  Pending        Completed       Pending Remarks :  
+Technical Team Members :
+Site out time photo with location 
+2.FOR MARKETING SITE OPTIONS:
+Site in time with location 
+Customer name:
+Mobile number:                                                     EB service number:
+Address:                                                                   Location: 
+Would like to update customer requirements            Yes               No
+Selection Box -  Residential/Commercial/Agri/Other
+Selection Box -  {On-grid/Off-grid/Hy-brid/Water heater/Water Pump/Lights & Accessories }/Others
+
+Project Details :
+
+ON GRID:
+Solar Panel Make:                                         Panel Watts:
+Inverter Make:   Inverter Watts:
+Inverter Phase: Lightning Arrest:
+Earth:                                                                       Floor:
+Solar Panel no’s:Structure height:
+Project Value:                                                        Others: 
+Site photo (1 to 20 photos)
+Site out time with location
+Product Details
+Solar Panel Brand: 
+1.	Renew
+2.	Premier
+3.	UTL Solar
+4.	Loom Solar
+5.	Kirloskar
+6.	Adani Solar
+7.	Vikram Solar
+
+Inverter Make:
+1.	Growatt
+2.	Deye
+3.	Polycab
+4.	UTL 
+Inverter Phase:
+1.	Single Phase
+2.	Three Phase
+Earth
+1.	DC 
+2.	AC
+Panel Watts
+1.	530
+2.	535
+3.	550
+4.	590
+Inverter Watts
+1.	3kw
+2.	4kw
+3.	5kw
+4.	10Kw
+5.	15Kw
+6.	30kw
+
+
+
+
+
+
+
+
+
+
+
+
+
+OFF GRID:
+Solar Panel:                                                   Panel Watts:
+Inverter Make                                              Inverter Watts:
+Inverter Phase:                                            Lightning Arrest:
+Earth:                                                             Floor:
+Solar Panel no’s:Structure Height
+Battery brandVoltage :                                   Battery No’s
+Battery standsOthers
+Project Value:                                             Others: 	
+Site photo (1 to 20 photos)
+Site out time with location
+Product Details
+Solar Panel Brand: 
+1.	Renew
+2.	Premier
+3.	UTL Solar
+4.	Loom Solar
+5.	Kirloskar
+6.	Adani Solar
+7.	Vikram Solar
+Inverter Make:
+1.	Growatt
+2.	Deye
+3.	Polycab
+4.	UTL 
+Inverter Phase:
+1.	Single Phase
+2.	Three Phase
+Earth
+1.DC
+2.AC
+
+Panel Watts
+1.	530
+2.	535
+3.	550
+4.	590
+Inverter Watts
+1.	3kw
+2.	4kw
+3.	5kw
+4.	10Kw
+5.	15Kw
+6.	30kw
+Battery Brand
+1.	Exide
+2.	UTL
+
+HY-BRID:
+Solar Panel:                                                   Panel Watts:
+Inverter Make                                              Inverter Watts:
+Inverter Phase:                                            Lightning Arrest:
+Earth:                                                              Floor:
+Solar Panel no’s:Structure Height
+Battery brand                                Voltage                                    Battery no’s 
+Battery stands                                                 others 
+Site photo (1 to 20 photos)
+Site out time with location
+Product Details
+Solar Panel Brand: 
+1.	Renew
+2.	Premier
+3.	UTL Solar
+4.	Loom Solar
+5.	Kirloskar
+6.	Adani Solar
+7.	Vikram Solar
+Inverter Make:
+1.	Growatt
+2.	Deye
+3.	Polycab
+4.	UTL 
+Inverter Phase:
+1.	Single Phase
+2.	Three Phase
+Earth
+1.DC
+2.AC
+
+Panel Watts
+1.	530
+2.	535
+3.	550
+4.	590
+Inverter Watts
+1.	3kw
+2.	4kw
+3.	5kw
+4.	10Kw
+5.	15Kw
+6.	30kw
+Battery Brand
+1.	Exide
+2.	UTL
+
+
+
+
+WATER HEATER:
+BRAND   LITER
+HEATINGCOILOTHERS
+Project Value:             Others: 
+Site photo (1 to 20 photos)
+Site out time with location
+Product Details:
+Brand:
+1.	Venus
+2.	Pressurdise/Non-Pressuredise
+3.	Hykon
+WATER PUMP:
+HP:                                                         DRIVE:
+SOLAR PANEL:                                     STRUCTURE HEIGHT:
+PANEL BRAND:                                                       PANEL NO’S:
+Project Value:                                     Others: 
+Site photo (1 to 20 photos)
+Site out time with location
+Product Details
+Brand:
+1.	Renew
+2.	Premier
+3.	UTL Solar
+4.	Loom Solar
+5.	Kirloskar
+6.	Adani Solar
+7.	Vikram Solar
+
+
+
+
+3.ADMIN:
+Site in time and out time photo with location 
+1.Bank Process:
+i)Bank Loan follow up
+Registration
+Document verification
+Site inspection
+Head office approval
+Amount Credited
+2. EB Process
+ii) EB New connection 
+Tariff change
+Name transfer 
+Load upgrade
+Inspection (Before Next meter)
+Net meter Follow-up 
+Inspection (After Next meter)
+Subsidy
+------------------------------------------------------------------------
+Purchase:
+Driving:
+Official Cash Transactions
+Official/Personal Work
+Others
+

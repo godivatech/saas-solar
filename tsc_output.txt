@@ -1,0 +1,226 @@
+client/src/components/attendance/attendance-check-out.tsx(242,32): error TS2554: Expected 2-3 arguments, but got 1.
+client/src/components/dashboard/attendance-report.tsx(66,27): error TS18046: 'attendanceRecords' is of type 'unknown'.
+client/src/components/dashboard/attendance-report.tsx(191,17): error TS2322: Type 'Dispatch<SetStateAction<{ from: Date; to: Date; }>>' is not assignable to type 'Dispatch<SetStateAction<{ from: Date | undefined; to: Date | undefined; }>>'.
+  Type 'SetStateAction<{ from: Date | undefined; to: Date | undefined; }>' is not assignable to type 'SetStateAction<{ from: Date; to: Date; }>'.
+    Type '{ from: Date | undefined; to: Date | undefined; }' is not assignable to type 'SetStateAction<{ from: Date; to: Date; }>'.
+      Type '{ from: Date | undefined; to: Date | undefined; }' is not assignable to type '{ from: Date; to: Date; }'.
+        Types of property 'from' are incompatible.
+          Type 'Date | undefined' is not assignable to type 'Date'.
+            Type 'undefined' is not assignable to type 'Date'.
+client/src/components/dashboard/attendance-report.tsx(207,20): error TS18046: 'departments' is of type 'unknown'.
+client/src/components/dashboard/attendance-report.tsx(207,37): error TS7006: Parameter 'dept' implicitly has an 'any' type.
+client/src/components/dashboard/attendance-report.tsx(227,20): error TS18046: 'employees' is of type 'unknown'.
+client/src/components/dashboard/attendance-report.tsx(463,29): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+client/src/components/dashboard/check-in-modal.tsx(88,33): error TS2339: Property 'latitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(89,34): error TS2339: Property 'longitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(93,23): error TS2820: Type '"customer"' is not assignable to type '"location" | "customerId" | "userId" | "reason" | "latitude" | "longitude"'. Did you mean '"customerId"'?
+client/src/components/dashboard/check-in-modal.tsx(142,33): error TS2339: Property 'latitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(143,34): error TS2339: Property 'longitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(327,25): error TS2339: Property 'latitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(327,49): error TS2339: Property 'longitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(329,38): error TS2339: Property 'latitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(329,74): error TS2339: Property 'longitude' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(335,27): error TS2339: Property 'officeLocation' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(336,46): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(338,43): error TS2339: Property 'distanceFromOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(338,89): error TS2339: Property 'officeLocation' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(412,42): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(487,50): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(488,28): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(493,26): error TS2339: Property 'officeLocation' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(495,30): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(496,50): error TS2339: Property 'officeLocation' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(497,52): error TS2339: Property 'officeLocation' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(497,99): error TS2339: Property 'distanceFromOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(592,29): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(619,31): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/dashboard/check-in-modal.tsx(690,31): error TS2339: Property 'isWithinOffice' does not exist on type 'UseGeolocationReturn'.
+client/src/components/leave/leave-application-form.tsx(309,19): error TS2322: Type 'Date | null | undefined' is not assignable to type 'Date | undefined'.
+  Type 'null' is not assignable to type 'Date | undefined'.
+client/src/components/leave/leave-application-form.tsx(320,19): error TS2322: Type 'Date | null | undefined' is not assignable to type 'Date | undefined'.
+  Type 'null' is not assignable to type 'Date | undefined'.
+client/src/components/leave/leave-application-form.tsx(343,17): error TS2322: Type 'Date | null | undefined' is not assignable to type 'Date | undefined'.
+  Type 'null' is not assignable to type 'Date | undefined'.
+client/src/components/site-visit/site-visit-checkout-modal.tsx(609,76): error TS2322: Type '"remarks"' is not assignable to type '"status" | "updatedAt" | "notes" | "siteOutTime" | "siteOutLocation" | "siteOutPhotoUrl" | "siteOutPhotos" | "visitOutcome" | "outcomeNotes" | "scheduledFollowUpDate" | "outcomeSelectedAt" | "outcomeSelectedBy"'.
+client/src/components/site-visit/site-visit-checkout-modal.tsx(609,87): error TS2322: Type '"description"' is not assignable to type '"status" | "updatedAt" | "notes" | "siteOutTime" | "siteOutLocation" | "siteOutPhotoUrl" | "siteOutPhotos" | "visitOutcome" | "outcomeNotes" | "scheduledFollowUpDate" | "outcomeSelectedAt" | "outcomeSelectedBy"'.
+client/src/contexts/auth-context.tsx(271,20): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(272,26): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(274,13): error TS2322: Type 'string' is not assignable to type 'UserRole'.
+client/src/contexts/auth-context.tsx(274,19): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(275,25): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(276,26): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(277,25): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(278,33): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(279,27): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(280,23): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(280,52): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(281,23): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(282,13): error TS2322: Type 'string' is not assignable to type 'number'.
+client/src/contexts/auth-context.tsx(282,17): error TS18048: 'userData' is possibly 'undefined'.
+client/src/contexts/auth-context.tsx(455,23): error TS7053: Element implicitly has an 'any' type because expression of type '"ceo" | "gm" | "officer" | "executive" | "cre" | "team_leader" | "technician" | "welder" | "house_man"' can't be used to index type '{ trainee: number; intern: number; junior_executive: number; executive: number; senior_executive: number; assistant_manager: number; manager: number; director: number; }'.
+  Property 'ceo' does not exist on type '{ trainee: number; intern: number; junior_executive: number; executive: number; senior_executive: number; assistant_manager: number; manager: number; director: number; }'.
+client/src/hooks/use-auth.tsx(23,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-auth.tsx(54,33): error TS2339: Property 'updateProfile' does not exist on type 'User'.
+client/src/hooks/use-auth.tsx(86,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-auth.tsx(117,18): error TS2339: Property 'additionalUserInfo' does not exist on type 'UserCredential'.
+client/src/hooks/use-auth.tsx(127,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-auth.tsx(155,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-basic-auth.tsx(76,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-basic-auth.tsx(109,18): error TS2339: Property 'additionalUserInfo' does not exist on type 'UserCredential'.
+client/src/hooks/use-basic-auth.tsx(129,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/hooks/use-basic-auth.tsx(157,9): error TS2322: Type '"success"' is not assignable to type '"default" | "destructive" | null | undefined'.
+client/src/lib/firebase.ts(132,50): error TS2339: Property 'email' does not exist on type '{ uid: string; }'.
+client/src/lib/firebase.ts(133,62): error TS2339: Property 'displayName' does not exist on type '{ uid: string; }'.
+client/src/pages/attendance.tsx(1069,9): error TS2322: Type '{ isOpen: boolean; onClose: () => void; onSuccess: () => void; currentAttendance: any; departmentTiming: any; }' is not assignable to type 'IntrinsicAttributes & SmartUnifiedCheckoutProps'.
+  Property 'departmentTiming' does not exist on type 'IntrinsicAttributes & SmartUnifiedCheckoutProps'.
+client/src/pages/invoices.tsx(102,38): error TS2339: Property 'data' does not exist on type '{}'.
+client/src/pages/invoices.tsx(103,40): error TS2339: Property 'pagination' does not exist on type '{}'.
+client/src/pages/quotation-creation.tsx(3705,9): error TS2322: Type '"email"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(3705,18): error TS2322: Type '"location"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(3705,30): error TS2322: Type '"ebServiceNumber"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(3705,49): error TS2322: Type '"propertyType"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(3705,65): error TS2322: Type '"scope"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4519,7): error TS2322: Type '"email"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4519,16): error TS2322: Type '"location"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4519,28): error TS2322: Type '"ebServiceNumber"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4519,47): error TS2322: Type '"propertyType"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4519,63): error TS2322: Type '"scope"' is not assignable to type 'requiredKeys<baseObjectOutputType<extendShape<Omit<{ quotationNumber: ZodString; customerId: ZodString; source: ZodEnum<["manual", "site_visit"]>; siteVisitMapping: ZodOptional<ZodNullable<ZodObject<{ sourceVisitId: ZodString; ... 5 more ...; dataQualityNotes: ZodOptional<...>; }, "strip", ZodTypeAny, { ...; }, { .....'.
+client/src/pages/quotation-creation.tsx(4526,26): error TS2367: This comparison appears to be unintentional because the types '"1_phase" | "3_phase" | null | undefined' and '""' have no overlap.
+client/src/pages/quotation-creation.tsx(4528,23): error TS2367: This comparison appears to be unintentional because the types 'number | null | undefined' and 'string' have no overlap.
+client/src/pages/quotation-creation.tsx(4530,23): error TS2367: This comparison appears to be unintentional because the types '"other" | "residential" | "commercial" | "agri" | null | undefined' and '""' have no overlap.
+client/src/pages/quotation-creation.tsx(4558,29): error TS18048: 'sanitizedData.projects' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4559,28): error TS18048: 'sanitizedData.projects' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4560,26): error TS18048: 'sanitizedData.projects' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4561,32): error TS18048: 'sanitizedData.projects' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4567,28): error TS18048: 'sanitizedData.totalCustomerPayment' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4571,18): error TS18048: 'sanitizedData.totalCustomerPayment' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4584,24): error TS2367: This comparison appears to be unintentional because the types '"1_phase" | "3_phase" | null | undefined' and '""' have no overlap.
+client/src/pages/quotation-creation.tsx(4585,21): error TS2367: This comparison appears to be unintentional because the types 'number | null | undefined' and 'string' have no overlap.
+client/src/pages/quotation-creation.tsx(4590,36): error TS18048: 'sanitizedData.projects' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4601,11): error TS2322: Type '{ source: "manual" | "site_visit"; preparedBy: string; refName: string | null; projects: any[]; customBillOfMaterials: any[] | undefined; customCompanyScopeItems: { [projectIndex: number]: string[]; } | undefined; ... 38 more ...; customerData?: { ...; } | ... 1 more ... | undefined; }' is not assignable to type '{ status: "draft" | "pending_approval" | "sent" | "accepted" | "rejected" | "expired" | "cancelled"; contactNumber: string; source: "manual" | "site_visit"; projects: (({ projectType: "on_grid"; ... 30 more ...; warranty?: { ...; } | ... 1 more ... | undefined; } | { ...; } | { ...; } | { ...; } | { ...; }) & { ...;...'.
+  Types of property 'status' are incompatible.
+    Type '"draft" | "pending_approval" | "sent" | "accepted" | "rejected" | "expired" | "cancelled" | undefined' is not assignable to type '"draft" | "pending_approval" | "sent" | "accepted" | "rejected" | "expired" | "cancelled"'.
+      Type 'undefined' is not assignable to type '"draft" | "pending_approval" | "sent" | "accepted" | "rejected" | "expired" | "cancelled"'.
+client/src/pages/quotation-creation.tsx(4615,62): error TS18048: 'sanitizedData.advancePaymentPercentage' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(4616,90): error TS18048: 'sanitizedData.advancePaymentPercentage' is possibly 'undefined'.
+client/src/pages/quotation-creation.tsx(5917,32): error TS2322: Type '{ onChange: (...event: any[]) => void; onBlur: Noop; value: string | null | undefined; disabled?: boolean | undefined; name: "internalNotes"; ref: RefCallBack; placeholder: string; className: string; "data-testid": string; }' is not assignable to type 'Omit<DetailedHTMLProps<TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>, "ref">'.
+  Types of property 'value' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+      Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+client/src/pages/quotation-creation.tsx(5936,32): error TS2322: Type '{ onChange: (...event: any[]) => void; onBlur: Noop; value: string | null | undefined; disabled?: boolean | undefined; name: "customerNotes"; ref: RefCallBack; placeholder: string; className: string; "data-testid": string; }' is not assignable to type 'Omit<DetailedHTMLProps<TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>, "ref">'.
+  Types of property 'value' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+      Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+server/migrations/add-ot-fields.ts(21,18): error TS2339: Property 'execute' does not exist on type '{ select: () => { from: () => Promise<never[]>; }; insert: () => { values: () => { returning: () => Promise<never[]>; }; }; update: () => { set: () => { where: () => { returning: () => Promise<never[]>; }; }; }; delete: () => { ...; }; }'.
+server/migrations/add-ot-fields.ts(28,18): error TS2339: Property 'execute' does not exist on type '{ select: () => { from: () => Promise<never[]>; }; insert: () => { values: () => { returning: () => Promise<never[]>; }; }; update: () => { set: () => { where: () => { returning: () => Promise<never[]>; }; }; }; delete: () => { ...; }; }'.
+server/routes.ts(165,45): error TS18046: 'error' is of type 'unknown'.
+server/routes.ts(653,57): error TS18046: 'error' is of type 'unknown'.
+server/routes.ts(785,16): error TS18048: 'result.user' is possibly 'undefined'.
+server/routes.ts(786,18): error TS18048: 'result.user' is possibly 'undefined'.
+server/routes.ts(787,24): error TS18048: 'result.user' is possibly 'undefined'.
+server/routes.ts(788,17): error TS18048: 'result.user' is possibly 'undefined'.
+server/routes.ts(871,59): error TS2873: This kind of expression is always falsy.
+server/routes.ts(989,66): error TS2873: This kind of expression is always falsy.
+server/routes.ts(1680,9): error TS2353: Object literal may only specify known properties, and 'workingHours' does not exist in type 'Partial<Attendance>'.
+server/routes.ts(2209,28): error TS2339: Property 'attendanceType' does not exist on type 'Attendance'.
+server/routes.ts(2271,30): error TS2339: Property 'isLate' does not exist on type 'Attendance'.
+server/routes.ts(2427,64): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'Date | undefined' is not assignable to parameter of type 'string | number | Date'.
+      Type 'undefined' is not assignable to type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'Date | undefined' is not assignable to parameter of type 'string | number'.
+      Type 'undefined' is not assignable to type 'string | number'.
+server/routes.ts(2497,17): error TS2353: Object literal may only specify known properties, and 'overtimeApproved' does not exist in type 'Partial<Attendance>'.
+server/routes.ts(2505,17): error TS2353: Object literal may only specify known properties, and 'overtimeApproved' does not exist in type 'Partial<Attendance>'.
+server/routes.ts(2533,67): error TS18046: 'error' is of type 'unknown'.
+server/routes.ts(4344,42): error TS2345: Argument of type '{ userId: string; employeeId: string; casualLeaveBalance: number; permissionHoursBalance: number; casualLeaveUsed: number; permissionHoursUsed: number; year: number; month: number; casualLeaveHistory: never[]; permissionHistory: never[]; lastResetDate: Date; }' is not assignable to parameter of type '{ employeeId: string; updatedAt: Date; createdAt: Date; userId: string; casualLeaveBalance: number; permissionHoursBalance: number; casualLeaveUsed: number; permissionHoursUsed: number; ... 4 more ...; lastResetDate: Date; }'.
+  Type '{ userId: string; employeeId: string; casualLeaveBalance: number; permissionHoursBalance: number; casualLeaveUsed: number; permissionHoursUsed: number; year: number; month: number; casualLeaveHistory: never[]; permissionHistory: never[]; lastResetDate: Date; }' is missing the following properties from type '{ employeeId: string; updatedAt: Date; createdAt: Date; userId: string; casualLeaveBalance: number; permissionHoursBalance: number; casualLeaveUsed: number; permissionHoursUsed: number; ... 4 more ...; lastResetDate: Date; }': updatedAt, createdAt
+server/routes.ts(5566,57): error TS2353: Object literal may only specify known properties, and 'date' does not exist in type '{ userId?: string | undefined; startDate?: string | undefined; endDate?: string | undefined; status?: string | undefined; adminReviewStatus?: string | undefined; }'.
+server/routes.ts(5646,48): error TS2554: Expected 1 arguments, but got 0.
+server/routes.ts(5737,9): error TS2353: Object literal may only specify known properties, and 'date' does not exist in type '{ userId?: string | undefined; startDate?: string | undefined; endDate?: string | undefined; status?: string | undefined; adminReviewStatus?: string | undefined; }'.
+server/routes.ts(5810,9): error TS2353: Object literal may only specify known properties, and 'location' does not exist in type '{ status: "leave" | "present" | "absent" | "late" | "holiday" | "half_day"; userId: string; otStatus: "not_started" | "in_progress" | "completed"; attendanceType: "office" | "remote" | "field_work"; ... 43 more ...; originalCheckOutTime?: Date | ... 1 more ... | undefined; }'.
+server/routes.ts(6097,15): error TS2339: Property 'user' does not exist on type '{ uid: string; user: any; permissions: ("dashboard.view" | "dashboard.analytics" | "dashboard.full_access" | "customers.view" | "customers.create" | "customers.edit" | "customers.delete" | ... 77 more ... | "site_visit.reports")[]; canApprove: boolean; maxApprovalAmount: number | null; } | undefined'.
+server/routes.ts(6193,60): error TS2739: Type '{ department: string; }' is missing the following properties from type '{ department: string; checkInTime: string; checkOutTime: string; workingHours?: number | undefined; lateThresholdMinutes?: number | undefined; overtimeThresholdMinutes?: number | undefined; isFlexibleTiming?: boolean | undefined; }': checkInTime, checkOutTime
+server/routes.ts(6814,67): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ view_own: string[]; view_team: string[]; view_all: string[]; create: string[]; edit: string[]; delete: string[]; }'.
+  No index signature with a parameter of type 'string' was found on type '{ view_own: string[]; view_team: string[]; view_all: string[]; create: string[]; edit: string[]; delete: string[]; }'.
+server/routes.ts(7321,11): error TS2322: Type 'Date | null | undefined' is not assignable to type 'Date | undefined'.
+  Type 'null' is not assignable to type 'Date | undefined'.
+server/routes.ts(7322,11): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+server/routes.ts(7323,11): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+server/routes_holiday_put.ts(2,1): error TS2304: Cannot find name 'app'.
+server/routes_holiday_put.ts(2,30): error TS2304: Cannot find name 'verifyAuth'.
+server/routes_holiday_put.ts(2,49): error TS7006: Parameter 'req' implicitly has an 'any' type.
+server/routes_holiday_put.ts(2,54): error TS7006: Parameter 'res' implicitly has an 'any' type.
+server/routes_holiday_put.ts(4,28): error TS2552: Cannot find name 'storage'. Did you mean 'Storage'?
+server/routes_holiday_put.ts(5,30): error TS2552: Cannot find name 'storage'. Did you mean 'Storage'?
+server/routes_holiday_put.ts(37,31): error TS2552: Cannot find name 'storage'. Did you mean 'Storage'?
+server/routes_holiday_put.ts(40,30): error TS2304: Cannot find name 'z'.
+server/routes_holiday_put.ts(41,80): error TS18046: 'error' is of type 'unknown'.
+server/routes_holiday_put.ts(42,67): error TS18046: 'error' is of type 'unknown'.
+server/services/auto-checkout-service.ts(114,25): error TS2353: Object literal may only specify known properties, and 'workingHours' does not exist in type 'Partial<Attendance>'.
+server/services/holiday-service.ts(105,17): error TS2322: Type '"holiday"' is not assignable to type '"customer_created" | "customer_updated" | "quotation_created" | "invoice_paid" | "attendance" | "leave_requested" | "follow_up_completed" | "follow_up_scheduled"'.
+server/services/holiday-service.ts(154,17): error TS2322: Type '"holiday"' is not assignable to type '"customer_created" | "customer_updated" | "quotation_created" | "invoice_paid" | "attendance" | "leave_requested" | "follow_up_completed" | "follow_up_scheduled"'.
+server/services/holiday-service.ts(192,17): error TS2322: Type '"holiday"' is not assignable to type '"customer_created" | "customer_updated" | "quotation_created" | "invoice_paid" | "attendance" | "leave_requested" | "follow_up_completed" | "follow_up_scheduled"'.
+server/services/leave-balance-service.ts(11,40): error TS2339: Property 'listUsers' does not exist on type 'IStorage'.
+server/services/leave-balance-service.ts(12,40): error TS7006: Parameter 'u' implicitly has an 'any' type.
+server/services/leave-balance-service.ts(131,47): error TS2345: Argument of type '{ name: "May Day" | "Independence Day" | "Gandhi Jayanti" | "Republic Day"; date: Date; year: number; type: "national"; isPaid: true; isOptional: false; createdBy: string; createdAt: Date; }' is not assignable to parameter of type '{ type: "national" | "company" | "regional"; date: Date; name: string; createdAt: Date; year: number; createdBy: string; isPaid: boolean; isOptional: boolean; otRateMultiplier: number; allowOT: boolean; description?: string | ... 1 more ... | undefined; applicableDepartments?: ("admin" | ... 5 more ... | "housekeepi...'.
+  Type '{ name: "May Day" | "Independence Day" | "Gandhi Jayanti" | "Republic Day"; date: Date; year: number; type: "national"; isPaid: true; isOptional: false; createdBy: string; createdAt: Date; }' is missing the following properties from type '{ type: "national" | "company" | "regional"; date: Date; name: string; createdAt: Date; year: number; createdBy: string; isPaid: boolean; isOptional: boolean; otRateMultiplier: number; allowOT: boolean; description?: string | ... 1 more ... | undefined; applicableDepartments?: ("admin" | ... 5 more ... | "housekeepi...': otRateMultiplier, allowOT
+server/services/manual-ot-service.ts(151,58): error TS2345: Argument of type '{ userId: string; date: Date; attendanceType: "office"; status: "present"; isLate: boolean; isWithinOfficeRadius: boolean; otStatus: "in_progress"; isManualOT: boolean; otStartTime: Date; ... 5 more ...; otType: "holiday" | ... 2 more ... | "weekend"; }' is not assignable to parameter of type '{ status: "leave" | "present" | "absent" | "late" | "holiday" | "half_day"; userId: string; otStatus: "not_started" | "in_progress" | "completed"; attendanceType: "office" | "remote" | "field_work"; ... 43 more ...; originalCheckOutTime?: Date | ... 1 more ... | undefined; }'.
+  Property 'autoCorrected' is missing in type '{ userId: string; date: Date; attendanceType: "office"; status: "present"; isLate: boolean; isWithinOfficeRadius: boolean; otStatus: "in_progress"; isManualOT: boolean; otStartTime: Date; ... 5 more ...; otType: "holiday" | ... 2 more ... | "weekend"; }' but required in type '{ status: "leave" | "present" | "absent" | "late" | "holiday" | "half_day"; userId: string; otStatus: "not_started" | "in_progress" | "completed"; attendanceType: "office" | "remote" | "field_work"; ... 43 more ...; originalCheckOutTime?: Date | ... 1 more ... | undefined; }'.
+server/services/manual-ot-service.ts(230,27): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(352,43): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(353,42): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(353,88): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(354,40): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(358,35): error TS2551: Property 'otStatus' does not exist on type 'Attendance'. Did you mean 'status'?
+server/services/manual-ot-service.ts(362,33): error TS2339: Property 'otType' does not exist on type 'Attendance'.
+server/services/notification-service.ts(2,15): error TS2305: Module '"@shared/schema"' has no exported member 'Notification'.
+server/services/ot-session-service.ts(143,70): error TS2554: Expected 2 arguments, but got 3.
+server/services/ot-session-service.ts(443,17): error TS1117: An object literal cannot have multiple properties with the same name.
+server/services/payroll-calculation-service.ts(67,7): error TS18004: No value exists in scope for the shorthand property 'workingHoursPerMonth'. Either declare one or provide an initializer.
+server/services/payroll-calculation-service.ts(189,36): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'Date | null | undefined' is not assignable to parameter of type 'string | number | Date'.
+      Type 'undefined' is not assignable to type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'Date | null | undefined' is not assignable to parameter of type 'string | number'.
+      Type 'undefined' is not assignable to type 'string | number'.
+server/services/payroll-calculation-service.ts(190,34): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'Date | null | undefined' is not assignable to parameter of type 'string | number | Date'.
+      Type 'undefined' is not assignable to type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'Date | null | undefined' is not assignable to parameter of type 'string | number'.
+      Type 'undefined' is not assignable to type 'string | number'.
+server/services/payroll-lock-service.ts(77,17): error TS2322: Type '"payroll"' is not assignable to type '"customer_created" | "customer_updated" | "quotation_created" | "invoice_paid" | "attendance" | "leave_requested" | "follow_up_completed" | "follow_up_scheduled"'.
+server/services/payroll-lock-service.ts(150,17): error TS2322: Type '"payroll"' is not assignable to type '"customer_created" | "customer_updated" | "quotation_created" | "invoice_paid" | "attendance" | "leave_requested" | "follow_up_completed" | "follow_up_scheduled"'.
+server/services/performance-optimizer.ts(67,23): error TS2802: Type 'MapIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/services/performance-optimizer.ts(83,32): error TS2802: Type 'MapIterator<[string, CacheEntry<any>]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/services/performance-optimizer.ts(100,32): error TS2802: Type 'MapIterator<[string, CacheEntry<any>]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/services/quotation-mapping-service.ts(910,5): error TS2322: Type '{ projectType: "water_pump"; driveHP: any; hp: any; drive: any; solarPanel: any; panelWatts: any; panelType: any; panelBrand: any; dcrPanelCount: any; nonDcrPanelCount: any; panelCount: any; structureType: any; ... 19 more ...; warranty: { ...; }; }' is not assignable to type '{ projectType: "on_grid"; systemKW: number; pricePerKW: number; solarPanelMake: ("renew" | "premier" | "utl_solar" | "loom_solar" | "kirloskar" | "adani_solar" | "vikram_solar")[]; ... 27 more ...; warranty?: { ...; } | ... 1 more ... | undefined; } | { ...; } | { ...; } | { ...; } | { ...; }'.
+  Property 'dcCable' is missing in type '{ projectType: "water_pump"; driveHP: any; hp: any; drive: any; solarPanel: any; panelWatts: any; panelType: any; panelBrand: any; dcrPanelCount: any; nonDcrPanelCount: any; panelCount: any; structureType: any; ... 19 more ...; warranty: { ...; }; }' but required in type '{ projectType: "water_pump"; dcrPanelCount: number; nonDcrPanelCount: number; panelCount: number; lightningArrest: boolean; electricalAccessories: boolean; earth: ("dc" | "ac" | "ac_dc")[]; ... 26 more ...; earthWork?: "customer_scope" | ... 2 more ... | undefined; }'.
+server/services/unified-attendance-service.ts(89,50): error TS2345: Argument of type 'string' is not assignable to parameter of type '"admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping"'.
+server/services/unified-attendance-service.ts(139,44): error TS2345: Argument of type 'string' is not assignable to parameter of type '"admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping"'.
+server/services/unified-attendance-service.ts(162,74): error TS2345: Argument of type '"admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping" | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+server/services/unified-attendance-service.ts(548,62): error TS2339: Property 'id' does not exist on type 'never'.
+server/services/unified-attendance-service.ts(558,60): error TS2345: Argument of type '{ checkInImageUrl?: string | undefined; customerName?: string | undefined; userId: string; date: Date; checkInTime: Date; attendanceType: "office" | "remote" | "field_work"; ... 16 more ...; otStatus: "not_started"; }' is not assignable to parameter of type '{ status: "leave" | "present" | "absent" | "late" | "holiday" | "half_day"; userId: string; otStatus: "not_started" | "in_progress" | "completed"; attendanceType: "office" | "remote" | "field_work"; ... 43 more ...; originalCheckOutTime?: Date | ... 1 more ... | undefined; }'.
+  Property 'autoCorrected' is missing in type '{ checkInImageUrl?: string | undefined; customerName?: string | undefined; userId: string; date: Date; checkInTime: Date; attendanceType: "office" | "remote" | "field_work"; ... 16 more ...; otStatus: "not_started"; }' but required in type '{ status: "leave" | "present" | "absent" | "late" | "holiday" | "half_day"; userId: string; otStatus: "not_started" | "in_progress" | "completed"; attendanceType: "office" | "remote" | "field_work"; ... 43 more ...; originalCheckOutTime?: Date | ... 1 more ... | undefined; }'.
+server/services/unified-attendance-service.ts(665,9): error TS2353: Object literal may only specify known properties, and 'workingHours' does not exist in type 'Partial<Attendance>'.
+server/services/user-service.ts(240,59): error TS2345: Argument of type '{ displayName: string; role?: "master_admin" | "admin" | "employee" | undefined; department?: "admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping" | null | undefined; ... 32 more ...; email: string; }' is not assignable to parameter of type 'Partial<User>'.
+  Types of property 'photoURL' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+server/services/user-service.ts(251,50): error TS2345: Argument of type '{ uid: string; email: string; displayName: string; role: "master_admin" | "admin" | "employee"; department: "admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping" | null; }' is not assignable to parameter of type '{ uid: string; email: string; displayName: string; role: "master_admin" | "admin" | "employee"; isActive: boolean; employeeStatus: "active" | "inactive" | "probation" | "notice_period" | "terminated" | "on_leave"; ... 34 more ...; documents?: { ...; } | undefined; }'.
+  Type '{ uid: string; email: string; displayName: string; role: "master_admin" | "admin" | "employee"; department: "admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping" | null; }' is missing the following properties from type '{ uid: string; email: string; displayName: string; role: "master_admin" | "admin" | "employee"; isActive: boolean; employeeStatus: "active" | "inactive" | "probation" | "notice_period" | "terminated" | "on_leave"; ... 34 more ...; documents?: { ...; } | undefined; }': isActive, employeeStatus
+server/services/user-service.ts(278,57): error TS2345: Argument of type '{ displayName?: string | undefined; role?: "master_admin" | "admin" | "employee" | undefined; department?: "admin" | "operations" | "hr" | "marketing" | "sales" | "technical" | "housekeeping" | null | undefined; ... 31 more ...; documents?: { ...; } | undefined; }' is not assignable to parameter of type 'Partial<User>'.
+  Types of property 'photoURL' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+server/verify-settings.ts(3,10): error TS2724: '"./services/enterprise-time-service"' has no exported member named 'enterpriseTimeService'. Did you mean 'EnterpriseTimeService'?
+server/vite.ts(39,5): error TS2322: Type '{ middlewareMode: boolean; hmr: { server: Server<typeof IncomingMessage, typeof ServerResponse>; }; allowedHosts: boolean; }' is not assignable to type 'ServerOptions'.
+  Types of property 'allowedHosts' are incompatible.
+    Type 'boolean' is not assignable to type 'true | string[] | undefined'.

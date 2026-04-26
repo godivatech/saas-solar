@@ -1,0 +1,185 @@
+<<<<<<< HEAD
+Visual Design Requirements:
+•	Use primary brand color #a7ce3b (green) and secondary brand color #157fbe (blue).
+•	Design a professional UI with consistent shadows, spacing, and typography.
+•	Ensure responsive design across all device sizes (mobile, tablet, desktop).
+•	Include interactive elements with clear hover and focus states (e.g., buttons, inputs).
+Authentication & User Management:
+•	Implement Firebase authentication supporting email/password and Google login.
+•	Role-based permissions: 
+o	Master_Admin: Full control—add/delete/update departments, set office locations via geo-fencing, manage application access for departments/roles.
+o	Admin: Assign departments to employees.
+o	Employees: Access based on department (CRE, Accounts, HR, Sales and Marketing, Technical team).
+•	First registrant defaults to an employee; admins assign departments later.
+•	User profiles store personal details (name, email, etc.) and role information.
+Department Management:
+•	Master_Admin has complete flexibility to add, delete, update, and manage departments (e.g., CRE, Accounts, HR, Sales and Marketing, Technical team).
+Geo-Fencing and Check-In/Out:
+•	Master_Admin defines office locations using geo-fencing.
+•	Check-in button enables only after 9:30 AM.
+•	For check-out outside the office, employees must capture and upload a photo taken at that moment (no pre-uploaded images allowed).
+Customer Management Module:
+•	Add Customer Form: 
+o	Name (required)
+o	Address (multi-line)
+o	Email (validated)
+o	Location (optional map integration)
+o	Customer Scope (text area)
+•	Customer Listing: 
+o	Sortable/filterable table.
+o	Search by name, email, or location.
+o	Options: Edit, Delete, Update, View.
+o	Confirmation dialogs for destructive actions.
+o	Detailed view in a modern modal.
+Product Management Module:
+•	Add Product Form: 
+o	Product Name
+o	Types (dropdown/multi-select)
+o	Voltage (V)
+o	Rating
+o	Make
+o	Quantity (validated)
+o	Unit
+o	Price
+•	Product Listing: 
+o	Manage quantity with edit/update/delete options.
+o	Stock alerts for low inventory.
+Quotation & Invoice System:
+•	Select materials from the product list, validating quantities against the database.
+•	Generate downloadable PDFs with: 
+o	Customer details (name, location, number).
+o	Company branding (logo, colors).
+o	Product listings with costs.
+o	Warranty information.
+•	Support two invoice types: customer version and company version, using professional templates.
+Attendance System:
+•	Location Tracking: 
+o	Office (default).
+o	Field/customer site (capture location, customer visited from database, reason).
+•	Check-In: Enforce 9:30 AM start; field visits require a reason.
+•	Check-Out: 
+o	6:30 PM for office staff (CRE, Accounts, HR).
+o	7:30 PM for field staff (Sales, Marketing, Technical).
+o	Reason required for delays; OT reason for Technical team.
+•	Permission: 2 hours monthly.
+•	Reports: Daily, weekly, monthly (Excel-exportable), OT calculation for payroll.
+Leave Management System:
+•	Policy: 1 casual leave/month; Sundays as holidays.
+•	Leave Application: 
+o	Date range.
+o	Reason.
+o	Supporting document upload.
+•	Approval Workflow: 
+o	Show leave balance before submission.
+o	Three-tier approval (TL, HR, GM, MD) with Approve, Escalate, Reject options.
+o	Notify users of status changes.
+Technical Implementation:
+•	Frontend: React with Tailwind CSS and shadcn/ui components.
+•	Backend: Express with Firebase/Firestore for database and authentication.
+•	File Storage: Store documents and reports (e.g., photos, PDFs).
+•	Libraries: Use for PDF generation (e.g., jsPDF) and Excel export (e.g., XLSX).
+•	Ensure responsive design, error handling, validation, and persistent data storage with backups.
+Additional Notes:
+•	Match Zoho CRM’s sophistication with intuitive navigation and feedback.
+•	Use Git for version control with clear commit messages.
+•	Test across devices for responsiveness.
+•	Deliver a polished, enterprise-grade product.
+
+
+Deliverables:
+•	Fully functional application on Replit.
+•	Source code with documentation.
+•	User manual and test cases.
+=======
+Visual Design Requirements:
+•	Use primary brand color #a7ce3b (green) and secondary brand color #157fbe (blue).
+•	Design a professional UI with consistent shadows, spacing, and typography.
+•	Ensure responsive design across all device sizes (mobile, tablet, desktop).
+•	Include interactive elements with clear hover and focus states (e.g., buttons, inputs).
+Authentication & User Management:
+•	Implement Firebase authentication supporting email/password and Google login.
+•	Role-based permissions: 
+o	Master_Admin: Full control—add/delete/update departments, set office locations via geo-fencing, manage application access for departments/roles.
+o	Admin: Assign departments to employees.
+o	Employees: Access based on department (CRE, Accounts, HR, Sales and Marketing, Technical team).
+•	First registrant defaults to an employee; admins assign departments later.
+•	User profiles store personal details (name, email, etc.) and role information.
+Department Management:
+•	Master_Admin has complete flexibility to add, delete, update, and manage departments (e.g., CRE, Accounts, HR, Sales and Marketing, Technical team).
+Geo-Fencing and Check-In/Out:
+•	Master_Admin defines office locations using geo-fencing.
+•	Check-in button enables only after 9:30 AM.
+•	For check-out outside the office, employees must capture and upload a photo taken at that moment (no pre-uploaded images allowed).
+Customer Management Module:
+•	Add Customer Form: 
+o	Name (required)
+o	Address (multi-line)
+o	Email (validated)
+o	Location (optional map integration)
+o	Customer Scope (text area)
+•	Customer Listing: 
+o	Sortable/filterable table.
+o	Search by name, email, or location.
+o	Options: Edit, Delete, Update, View.
+o	Confirmation dialogs for destructive actions.
+o	Detailed view in a modern modal.
+Product Management Module:
+•	Add Product Form: 
+o	Product Name
+o	Types (dropdown/multi-select)
+o	Voltage (V)
+o	Rating
+o	Make
+o	Quantity (validated)
+o	Unit
+o	Price
+•	Product Listing: 
+o	Manage quantity with edit/update/delete options.
+o	Stock alerts for low inventory.
+Quotation & Invoice System:
+•	Select materials from the product list, validating quantities against the database.
+•	Generate downloadable PDFs with: 
+o	Customer details (name, location, number).
+o	Company branding (logo, colors).
+o	Product listings with costs.
+o	Warranty information.
+•	Support two invoice types: customer version and company version, using professional templates.
+Attendance System:
+•	Location Tracking: 
+o	Office (default).
+o	Field/customer site (capture location, customer visited from database, reason).
+•	Check-In: Enforce 9:30 AM start; field visits require a reason.
+•	Check-Out: 
+o	6:30 PM for office staff (CRE, Accounts, HR).
+o	7:30 PM for field staff (Sales, Marketing, Technical).
+o	Reason required for delays; OT reason for Technical team.
+•	Permission: 2 hours monthly.
+•	Reports: Daily, weekly, monthly (Excel-exportable), OT calculation for payroll.
+Leave Management System:
+•	Policy: 1 casual leave/month; Sundays as holidays.
+•	Leave Application: 
+o	Date range.
+o	Reason.
+o	Supporting document upload.
+•	Approval Workflow: 
+o	Show leave balance before submission.
+o	Three-tier approval (TL, HR, GM, MD) with Approve, Escalate, Reject options.
+o	Notify users of status changes.
+Technical Implementation:
+•	Frontend: React with Tailwind CSS and shadcn/ui components.
+•	Backend: Express with Firebase/Firestore for database and authentication.
+•	File Storage: Store documents and reports (e.g., photos, PDFs).
+•	Libraries: Use for PDF generation (e.g., jsPDF) and Excel export (e.g., XLSX).
+•	Ensure responsive design, error handling, validation, and persistent data storage with backups.
+Additional Notes:
+•	Match Zoho CRM’s sophistication with intuitive navigation and feedback.
+•	Use Git for version control with clear commit messages.
+•	Test across devices for responsiveness.
+•	Deliver a polished, enterprise-grade product.
+
+
+Deliverables:
+•	Fully functional application on Replit.
+•	Source code with documentation.
+•	User manual and test cases.
+>>>>>>> d7b0360e5f812ad38e870765d33c592734271da8

@@ -1,0 +1,180 @@
+firebase.ts:226 
+            
+            
+           GET https://2465f5f1-bc54-4989-a2a8-883ffd8c17e8-00-3iop2wzh8vrhd.pike.replit.dev/api/users 401 (Unauthorized)
+syncUser @ firebase.ts:226
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+firebase.ts:230 Error fetching users from API: TypeError: existingUsers.find is not a function
+    at syncUser (firebase.ts:228:36)
+    at async auth-context.tsx:257:26
+syncUser @ firebase.ts:230
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+firebase.ts:239 SyncUser - User role from Firestore: lMNQJarXcfZw80GruvgMethEdJq1 employee
+firebase.ts:226 
+            
+            
+           GET https://2465f5f1-bc54-4989-a2a8-883ffd8c17e8-00-3iop2wzh8vrhd.pike.replit.dev/api/users 401 (Unauthorized)
+syncUser @ firebase.ts:226
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+firebase.ts:230 Error fetching users from API: TypeError: existingUsers.find is not a function
+    at syncUser (firebase.ts:228:36)
+    at async auth-context.tsx:257:26
+syncUser @ firebase.ts:230
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+firebase.ts:239 SyncUser - User role from Firestore: lMNQJarXcfZw80GruvgMethEdJq1 employee
+firebase.ts:246 
+            
+            
+           POST https://2465f5f1-bc54-4989-a2a8-883ffd8c17e8-00-3iop2wzh8vrhd.pike.replit.dev/api/users 401 (Unauthorized)
+syncUser @ firebase.ts:246
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+auth-context.tsx:294 Error syncing user data: TypeError: Cannot read properties of null (reading 'email')
+    at auth-context.tsx:271:29
+(anonymous) @ auth-context.tsx:294
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+firebase.ts:246 
+            
+            
+           POST https://2465f5f1-bc54-4989-a2a8-883ffd8c17e8-00-3iop2wzh8vrhd.pike.replit.dev/api/users 401 (Unauthorized)
+syncUser @ firebase.ts:246
+await in syncUser
+(anonymous) @ auth-context.tsx:257
+await in (anonymous)
+(anonymous) @ firebase_auth.js?v=0fae5f6f:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=0fae5f6f:2741
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:2601
+onAuthStateChanged @ firebase_auth.js?v=0fae5f6f:5121
+onAuthChange @ firebase.ts:94
+(anonymous) @ auth-context.tsx:218
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=0fae5f6f:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=0fae5f6f:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=0fae5f6f:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=0fae5f6f:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=0fae5f6f:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=0fae5f6f:19447
+(anonymous) @ chunk-RPCDYKBN.js?v=0fae5f6f:19328
+workLoop @ chunk-RPCDYKBN.js?v=0fae5f6f:197
+flushWork @ chunk-RPCDYKBN.js?v=0fae5f6f:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=0fae5f6f:384
+auth-context.tsx:294 Error syncing user data: TypeError: Cannot read properties of null (reading 'email')
+    at auth-context.tsx:271:29

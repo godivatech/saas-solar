@@ -1,0 +1,155 @@
+1. in the in the step pricing and payment terms there is quatation details table in that table there is a box "KW"
+in that the value is show with decimal when you check the other places it will converted to whole valeus based on some formual i think check it even in the description genration we properly solve this and usign as a whole value
+
+2. in the pdf there is "Ref: Discussion with {user name}
+this is workign properly but i need one change in the quoataion creation process final step i need a fields "Ref Name:" in that by defaukt there should be the user name but if i type some other name and create quaoation in the quoataion ref name should what i given
+
+3. In the quoataion creation process in the "Customer Information" step some field name need cahnge EB Sanction - KW
+"Sanction Load"
+and cahgne "EB Sanction - Load Phase" this to Just Load phase so that we are changing here we also make this changes in the pdf also in this part
+Quotation Prepared for
+Contact Person: Mr. Selva
+No : 14, Jaihindpuram, Madurai
+Contact Number: 1234567890
+EB NO: 1234567890
+Tariff Code: LA1/A Domestic
+Load Phase: 1 Phase
+Sanctioned KW: 3
+
+4. In the step "Project configuration" after i choose off grid in that form the Battery brand have threee values Exide,UTl, Exide UTl
+this third one should be Exide/UTL based on this cahnge you have to also check all the places that need this change
+Now check what changes you have to make to acheive this what exact changes needed what places what files you need to change check it
+
+
+I'll start implementing all the changes now. Let me begin with multiple parallel edits:
+Planned parallel file modifications
+ 
+Let me first read the files I need to modify to get the exact context:
+Show less
+Opened shared/schema.ts
+Opened client/src/pages/quotation-creation.tsx
+Opened client/src/pages/quotation-creation.tsx
+Opened client/src/pages/quotation-creation.tsx
+Opened server/services/quotation-pdf-service.ts
+Opened server/routes/quotations.ts
+Examined quotation-template-service integration
+ 
+Now let me also check the template service to understand the template structure:
+Show less
+Opened server/services/quotation-template-service.ts
+Opened server/services/quotation-template-service.ts
+Opened client/src/pages/quotation-creation.tsx
+Opened client/src/pages/quotation-creation.tsx
+Opened client/src/components/site-visit/admin-site-visit-form.tsx
+Decided on parallel task execution
+ 
+Now I have all the context needed. Let me make all the changes in parallel:
+Show less
+Edited client/src/pages/quotation-creation.tsx
+Edited client/src/pages/quotation-creation.tsx
+Edited client/src/pages/quotation-creation.tsx
+Edited client/src/pages/quotation-creation.tsx
+Edited server/services/quotation-pdf-service.ts
+Edited client/src/components/site-visit/admin-site-visit-form.tsx
+Restarted Start application
+Decided on schema and form changes
+ 
+Let me update the task list and continue with the remaining tasks:
+Added refName field to schema
+ 
+Now let me add the refName field to the schema and update all related files:
+Show less
+Edited shared/schema.ts
+Opened client/src/pages/quotation-creation.tsx
+Opened client/src/pages/quotation-creation.tsx
+Decided on refName inclusion
+ 
+Now let me add the refName field to the form and update the PDF service:
+Show less
+Edited client/src/pages/quotation-creation.tsx
+Edited client/src/pages/quotation-creation.tsx
+Edited client/src/pages/quotation-creation.tsx
+Edited server/services/quotation-pdf-service.ts
+Decided on context saving strategy
+ 
+I need to persist my state before the context window fills up. Let me save my progress:
+Show less
+Created .local/state/memory/persisted_information.md
+Called create_new_context to persist
+Opened .local/state/memory/persisted_information.md
+Opened server/services/quotation-template-service.ts
+Opened client/src/pages/quotation-creation.tsx
+Restarted Start application
+Decided on interface schema updates (5 seconds)
+ 
+I need to continue working on the pending tasks. Let me check the current state of the files and complete the remaining work.
+Opened server/services/quotation-template-service.ts
+Opened server/services/quotation-template-service.ts
+Decided on refName addition
+ 
+Let me check the schema to see the current state of refName, and then complete the remaining changes:
+Show less
+Executed rg -n refName shared/schema.ts
+Executed rg -n refName client/src/pages/quotation-creation.tsx
+Executed rg -n refName server/services/quotation-pdf-service.ts
+Decided on refName field addition
+ 
+Most of the refName changes are already done. I need to add refName to the QuotationTemplate interface and include it in the template generation return. Let me make those changes:
+Edited server/services/quotation-template-service.ts
+Added refName to return
+ 
+Now I need to add refName to the template generation return object. Let me update that:
+Edited server/services/quotation-template-service.ts
+Updated task list and ran review
+ 
+Now let me update the task list to mark the completed tasks and run the architect review:
+Decided on review process
+ 
+Let me restart the workflow and then run the architect review to verify all the changes:
+Restarted Start application
+Ran architect review
+Reviewed quotation system changes
+Decided on route parameter handling
+ 
+I need to check and fix the server routes to properly accept the refName field:
+Show less
+Executed rg -C 5 -n insertQuotationSchema server/routes
+Confirmed schema data flow
+Opened shared/schema.ts
+Opened server/routes/quotations.ts
+Decided on schema and routing (6 seconds)
+ 
+Looking at the code, the insertQuotationSchema at line 1811 already includes refName: z.string().nullish(), so the server route should accept it. Let me verify the form field implementation and check the logs:
+Opened client/src/pages/quotation-creation.tsx
+Checked console and system logs
+Decided schema requirements were met (5 seconds)
+ 
+The application is running successfully. Looking at the implementation:
+
+Schema (shared/schema.ts line 1811) already has refName: z.string().nullish()
+Server route uses insertQuotationSchema.parse() which includes refName
+Form field exists at lines 5908-5928 with proper bindings
+Template interface and generation now include refName (I just added those)
+The architect's concern was incorrect - the schema already includes refName so the server will accept it. Let me run a final architect review to confirm all changes are correct:
+Verified quotation data flow and fixes
+Planned next steps completion
+ 
+All changes have been verified. Let me mark all tasks as completed:
+Completed tasks
+Show less
+Decided on state persistence strategy
+Created .local/state/memory/persisted_information.md
+Restarted Start application
+Decided on context creation method
+Opened .local/state/memory/persisted_information.md
+Decided on quotation system updates
+ 
+All tasks have been completed successfully! Here's what was done:
+
+KW Decimal Display - Fixed to show proper decimal formatting in the Pricing Step
+Ref Name Field - Added throughout the system (schema, form, submission, template service, and PDF)
+Field Label Updates:"EB Sanction - Load Phase" → "Load Phase"
+"EB Sanction - KW" → "Sanction Load"
+"Sanctioned KW" → "Sanction Load" (in PDF and admin forms)
+Battery Brand Display - Changed from "Exide UTL" to "Exide/UTL"
+The application is running and ready for use. You can test creating a new quotation to verify all the changes work as expected.

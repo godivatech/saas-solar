@@ -1,0 +1,34 @@
+1. TypeScript Error (customerData.id)
+Yes, you're correct! ✅ This error only affects manual quotation creation.
+
+Site Visit → Quotation: Works perfectly because the customer ID is already resolved from the mapping data before reaching this code
+Manual Creation: Tries to access customerData.id which doesn't exist in the schema, causing the error
+Fix: We just need to handle the customer lookup/creation differently for manual quotations.
+
+2. Inverter KVA Field - NOT just a name change
+No, it's not just a label change - the field is actually missing entirely. Here's what's happening:
+
+Current State:
+Quotation Creation Form has:
+├─ "Inverter KW" input ← Used for ALL project types
+├─ "Inverter Volt" input ← Shows only for off-grid/hybrid ✓
+└─ "Inverter KVA" input ← MISSING ✗
+What Should Exist:
+For Off-Grid/Hybrid:
+├─ "Inverter KW" input (optional, for calculations)
+├─ "Inverter KVA" input ← NEED TO ADD THIS
+└─ "Inverter Volt" input ✓ (already exists)
+The schema supports both inverterKW and inverterKVA as separate fields. The site visit form correctly captures inverterKVA: '5', but the quotation creation form doesn't have an input field for it.
+
+Why it matters: Off-grid/hybrid inverters are rated in KVA (not KW), and this value shows in the BOM header and description. Without this field, users creating manual quotations can't specify the KVA rating.
+
+So we need to:
+
+✅ Fix the TypeScript error for manual customer selection
+✅ Add a new "Inverter KVA" input field (not rename, but add)
+✅ Fix the auto-calculation of backup watts
+my answer
+The schema supports both inverterKW and inverterKVA as separate fields. The site visit form correctly captures inverterKVA: '5', but the quotation creation form doesn't have an input field for it.
+dosent need to have a seperate field we already added inverter volt fielt just hte name shows like this inverter KVA in the BOM quoataion and thats it instead of inverter kw which is we use in other project type we named this as inverter kva in off grid and hybrid that it
+
+start solve this

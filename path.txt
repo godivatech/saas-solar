@@ -1,0 +1,178 @@
+COMPLETE FILE PATH STRUCTURE - PRAKASH GREENS ENERGY DASHBOARD
+
+ROOT DIRECTORY (.)
+├── attached_assets/
+│   ├── 1.jpeg
+│   ├── 11.jpg
+│   ├── 11.png
+│   ├── 11_1749129212902.jpg
+│   ├── 22.png
+│   ├── 22_1749129231060.jpg
+│   ├── 3.jpg
+│   ├── Pasted-Department-Management-Master-Admin-has-complete-flexibility-to-add-delete-update-and-manage-d-1747725532691.txt
+│   ├── Pasted-Firestore-data-createdAt-2025-04-30T13-18-09-871Z-role-master-admin-auth-context-tsx-47-Fi-1747658957662.txt
+│   ├── Pasted-Now-i-am-gonna-paste-the-conversation-i-have-with-you-in-the-previous-version-Recommended-Architect-1748843231814.txt
+│   ├── Pasted-Project-Title-Enterprise-Grade-Dashboard-Application-for-Prakash-Greens-Energy-Objective-Develop-1747656601527.txt
+│   ├── Pasted-Visual-Design-Requirements-Use-primary-brand-color-a7ce3b-green-and-secondary-brand-color-15-1747718833459.txt
+│   ├── Pasted-auth-context-tsx-50-GET-https-ce141431-a3d6-4137-b7ca-3e016f-1747658699831.txt
+│   ├── Pasted-firebase-ts-226-GET-https-2465f5f1-bc54-4989-a2a8-883ffd8c17-1748843977273.txt
+│   ├── Pasted-git-rm-attached-assets-Pasted-type-service-account-project-id-solar-energy-56bc8-private-key-id-ce7-1748669727924.txt
+│   ├── image_1747658193260.png
+│   ├── image_1748686833389.png
+│   ├── image_1748842153060.png
+│   ├── image_1748946928354.png
+│   ├── image_1748948195324.png
+│   ├── image_1749211570963.png
+│   ├── image_1749211675590.png
+│   ├── image_1749215308430.png
+│   └── new logo 2.png
+├── client/
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx
+│       ├── main.tsx
+│       ├── index.css
+│       ├── components/
+│       │   ├── app-loader.tsx
+│       │   ├── attendance/
+│       │   │   ├── attendance-check-in.tsx
+│       │   │   └── attendance-check-out.tsx
+│       │   ├── auth/
+│       │   │   ├── auth-form.tsx
+│       │   │   ├── auth-loading.tsx
+│       │   │   ├── login-form.tsx
+│       │   │   ├── protected-route.tsx
+│       │   │   ├── register-form.tsx
+│       │   │   └── root-handler.tsx
+│       │   ├── customers/
+│       │   │   └── customer-form.tsx
+│       │   ├── dashboard/
+│       │   │   ├── activity-timeline.tsx
+│       │   │   ├── attendance-card.tsx
+│       │   │   ├── attendance-report.tsx
+│       │   │   ├── check-in-modal.tsx
+│       │   │   ├── low-stock-products-table.tsx
+│       │   │   ├── pending-approvals-card.tsx
+│       │   │   ├── quick-actions.tsx
+│       │   │   ├── recent-customers-table.tsx
+│       │   │   ├── recent-invoices.tsx
+│       │   │   ├── recent-quotations.tsx
+│       │   │   └── stats-card.tsx
+│       │   ├── layout/
+│       │   │   ├── dashboard-layout.tsx
+│       │   │   ├── header.tsx
+│       │   │   ├── mobile-sidebar.tsx
+│       │   │   └── sidebar.tsx
+│       │   └── ui/
+│       │       ├── accordion.tsx
+│       │       ├── alert-dialog.tsx
+│       │       ├── alert.tsx
+│       │       ├── aspect-ratio.tsx
+│       │       ├── avatar.tsx
+│       │       ├── badge.tsx
+│       │       ├── breadcrumb.tsx
+│       │       ├── button.tsx
+│       │       ├── calendar.tsx
+│       │       ├── card.tsx
+│       │       ├── carousel.tsx
+│       │       ├── chart.tsx
+│       │       ├── checkbox.tsx
+│       │       ├── collapsible.tsx
+│       │       ├── command.tsx
+│       │       ├── context-menu.tsx
+│       │       ├── date-picker.tsx
+│       │       ├── dialog.tsx
+│       │       ├── drawer.tsx
+│       │       ├── dropdown-menu.tsx
+│       │       ├── form.tsx
+│       │       ├── hover-card.tsx
+│       │       ├── input-otp.tsx
+│       │       ├── input.tsx
+│       │       ├── label.tsx
+│       │       ├── menubar.tsx
+│       │       ├── navigation-menu.tsx
+│       │       ├── pagination.tsx
+│       │       ├── popover.tsx
+│       │       ├── progress.tsx
+│       │       ├── radio-group.tsx
+│       │       ├── resizable.tsx
+│       │       ├── scroll-area.tsx
+│       │       ├── select.tsx
+│       │       ├── separator.tsx
+│       │       ├── sheet.tsx
+│       │       ├── sidebar.tsx
+│       │       ├── skeleton.tsx
+│       │       ├── slider.tsx
+│       │       ├── switch.tsx
+│       │       ├── table.tsx
+│       │       ├── tabs.tsx
+│       │       ├── textarea.tsx
+│       │       ├── toast.tsx
+│       │       ├── toaster.tsx
+│       │       ├── toggle-group.tsx
+│       │       ├── toggle.tsx
+│       │       └── tooltip.tsx
+│       ├── contexts/
+│       │   └── auth-context.tsx
+│       ├── hooks/
+│       │   ├── use-auth.tsx
+│       │   ├── use-basic-auth.tsx
+│       │   ├── use-geolocation.tsx
+│       │   ├── use-mobile.tsx
+│       │   ├── use-permissions.tsx
+│       │   └── use-toast.ts
+│       ├── lib/
+│       │   ├── firebase.ts
+│       │   ├── queryClient.ts
+│       │   └── utils.ts
+│       └── pages/
+│           ├── attendance-management.tsx
+│           ├── attendance.tsx
+│           ├── customers.tsx
+│           ├── dashboard.tsx
+│           ├── departments.tsx
+│           ├── invoices.tsx
+│           ├── leave.tsx
+│           ├── login.tsx
+│           ├── not-found.tsx
+│           ├── office-locations.tsx
+│           ├── payroll-management.tsx
+│           ├── products.tsx
+│           ├── quotations.tsx
+│           ├── register.tsx
+│           └── user-management.tsx
+├── server/
+│   ├── db.ts
+│   ├── firebase.ts
+│   ├── index.ts
+│   ├── routes.ts
+│   ├── storage.ts
+│   ├── test-firebase-admin.ts
+│   ├── utils.ts
+│   ├── vite.ts
+│   ├── middleware/
+│   │   └── enterprise-auth.ts
+│   └── services/
+│       ├── cache-service.ts
+│       └── user-service.ts
+├── shared/
+│   └── schema.ts
+├── components.json
+├── drizzle.config.ts
+├── package.json
+├── package-lock.json
+├── path.txt
+├── postcss.config.js
+├── tailwind.config.ts
+├── test-firebase-now.js
+├── tsconfig.json
+└── vite.config.ts
+
+TOTAL FILES: 138
+MAIN DIRECTORIES: 8
+COMPONENT FILES: 58
+PAGE FILES: 15
+HOOK FILES: 6
+SERVICE FILES: 2
+CONFIGURATION FILES: 8
+ASSET FILES: 17

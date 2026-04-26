@@ -1,0 +1,78 @@
+In the application, there is a quotation-making process. Everything is good — the creation process, all calculations, and the quotation template are working correctly.
+I need some small corrections.
+There are five project types: On-Grid, Off-Grid, Hybrid, Water Pump, and Water Heater.
+I will tell you exactly where I need these changes.
+I need some changes in On-Grid, Off-Grid, Hybrid, Water Heater, and Water Pump, specifically in the "Pricing and Payment Terms" step.
+In this step, there is a "Quotation Pricing Details" table where the Description is auto-generated.
+Here, I need the following changes:
+________________________________________
+1. On-Grid
+The description now dynamically gets the system and installation of kW, which is good.
+But I also need to include 3 KW Inverter (in some project types it is inverter KVA) and then the next phase (like single phase or three phase) should continue accordingly.
+________________________________________
+2. Off-Grid
+(Refer to the 1st image)
+•	The 340W comes from the selected Panel Watts.
+•	Multiply it by 2 (this 2 is based on the number of panels selected).
+•	1KVA/24V → here, 1KVA is the selected Inverter KVA in the form, and 24V is the auto-calculated value of Inverter Volt.
+You can see this formula in the BOM table. If not, there is a field in the project type where the user enters this value — you can fetch it from there.
+•	The 1PH is not needed.
+•	MPPT is based on the selected Inverter Make.
+•	100AH X 2 → here, 100AH is the selected Battery AH in the form, and 2 is the Battery Count.
+•	1-phase should come automatically from the form. The phase changes dynamically based on the selected Inverter KW or Inverter KVA which is already implemented in the project type form.
+________________________________________
+3. Hybrid
+(Refer to the 2nd image)
+•	10KW panel → comes from the selected Panel Watts.
+•	10KVA/120V → Inverter KVA and Inverter Volt.
+•	3 phase → comes from the form.
+•	UTL → this is the Battery Brand value.
+•	200AH → this is the Battery AH value.
+•	Lead Acid Battery → comes from the selected Battery Type.
+•	10 Nos → comes from the selected Battery Count.
+________________________________________
+4. Water Heater
+(Refer to the 3rd image)
+Ignore the image column — we are only discussing the description.
+In the description, it should display as:
+“Supply and installation of (Water Heater Brand) make solar water heater (Capacity in Litres) commercial (Pressurized or Non-Pressurized based on the field Water Heater Model) with corrosion-resistant epoxy-coated inner tank and powder-coated outer tank (Heating coil will be based on Heating Coil Type field in the form) and Transport Including GST.”
+Then, implement the following new fields:
+•	Qty
+•	Water Heater Model (Pressurized or Non-Pressurized two options to choose)
+•	Labour and Transport (Checkbox)
+Complete implementation is required for these new fields.
+When making these field changes, also make changes in But Before making an changes in the site visit form and d:
+•	The Site Visit Marketing Form (Project Type: Water Heater)
+•	The Site Visit Details Modal
+
+Additonally(for water heater) : in the pdf template generation normally for the all the project types we “Quotation Pricing Details” table but here now we don’t need that table and also above the BOM table we have one table single row table this is also we don’t need for this project type Next in the BOM table Normally we have lot calculation base on many things But in this water heater we don’t need that for examble see the image I attached as the 5th image just a BOM table with columns SlNo,Image (no needed),Decription,Price,Qty,Amount like in the image this is enough also after that so calculation this is enough so in the Quotation creation process “Pricing & Terms” step we have to make this changes to replicate in pdf template also I say the next changes also that need afte the table “Quotation Pricing Details” in the “Pricing & Terms” step  we only don’t need “Warranty details part”  then “Delivery period” part in the final step “Quotation summary part no needed” also “Document required for pm surya ghar” part also no needed” in this step we have editable Bom table I hope you know what changes you have to make here based on we discussed after Bom table should mention “installation on Floor(dynamic comes from what we select in the project type form ) . 
+________________________________________
+
+
+
+5. Water Pump
+(Refer to the 4th image)
+Description logic:
+•	System include: (based on what is chosen in the Motor HP field in the form)
+•	5KW → calculated as Panel Watts × Panel Count, take the first value and use it here. (The same formula is already used in the On-Grid project type — check that for reference.)
+•	540Wp → based on Panel Watts selection × 10 (Panel Count).
+•	UTL Panel → comes from Panel Brand field.
+•	5HP Drive → comes from Motor HP field.
+•	3 Phase → comes from the phase selected in the form.
+•	5KW → based on the same Panel Watts × Panel Count formula.
+•	Structure 3 feet and 4 feet → dynamic values from the form.
+•	The remaining items are also dynamic based on selected checkboxes.
+Additional changes:
+•	Rename the Motor HP field to Drive HP in this project type.
+•	Quantity field needed
+•	 There is a Plumping work field to choose Customer scope or company scope change this to Earth Work
+•	In the project type form, add checkboxes for:
+o	Lightening Arrest
+o	Electrical Accessories
+o	Earth Connection (same as in On-Grid project type)
+o	Labour and Transport
+•	Also, update these canges in Site Visit Marketing Form water pump project type also and Site Visit Details Modal to reflect these changes.
+
+
+
+Additonally(for water Pump : in the pdf template generation normally for the all the project types we “Quotation Pricing Details” table but here now we don’t need that table and also above the BOM table we have one table single row table this is also we don’t need for this project type Next in the BOM table Normally we have lot calculation base on many things But in this water heater we don’t need that for examble see the image I attached as the 6th image just a BOM table with columns SlNo,Decription,Price,Qty,Amount like in the image this is enough also after that so calculation this is enough so in the Quotation creation process “Pricing & Terms” step we have to make this changes to replicate in pdf template also I say the next changes also that need afte the table “Quotation Pricing Details” in the “Pricing & Terms” step we only don’t need “Warranty details part”  then “Delivery period” part in the final step “Quotation summary part no needed” also “Document required for pm surya ghar” part also no needed” in this step we have editable Bom table I hope you know what changes you have to make here based on we discussed .

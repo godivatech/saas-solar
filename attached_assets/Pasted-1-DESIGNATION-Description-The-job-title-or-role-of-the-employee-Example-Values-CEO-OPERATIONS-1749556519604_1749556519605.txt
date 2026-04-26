@@ -1,0 +1,127 @@
+1. DESIGNATION
+Description: The job title or role of the employee.
+Example Values: CEO, OPERATIONS, OFFICER ADMIN, etc.
+Purpose: Identifies the employee's position within the organization.
+2. DEPARTMENT
+Description: The department or team to which the employee belongs.
+Example Values: OPERATIONS, MARKETING, TECHNICAL, etc.
+Purpose: Categorizes employees based on their functional area.
+3. DATE OF JOINING
+Description: The date when the employee joined the organization.
+Example Values: 6/1/2012, 2/22/2014, etc.
+Purpose: Tracks the tenure of the employee.
+4. FIXED SALARY
+Description: Fixed components of the salary structure.
+FIXED BASIC: The base salary component.
+FIXED HRA: House Rent Allowance (HRA) as a fixed amount.
+Example Values: 25000 (FIXED BASIC), 7500 (FIXED HRA).
+Purpose: Breaks down the fixed salary into its components.
+5. DAYS/HOURS
+Description: Attendance and working hours details.
+MONTH DAYS: Total days in the month (e.g., 30 for April).
+PRESENT DAYS: Number of days the employee was present.
+PAID DAYS: Number of paid leaves taken.
+PER DAY SALARY: Daily salary calculated as (FIXED BASIC + FIXED HRA) / MONTH DAYS.
+OT HOURS: Overtime hours worked.
+PER DAY: Overtime rate per day.
+Example Values:
+MONTH DAYS: 30
+PRESENT DAYS: 30
+PAID DAYS: 0
+PER DAY SALARY: 7500
+OT HOURS: 0
+PER DAY: 0
+Purpose: Tracks attendance and overtime details.
+6. BETTA
+Description: Bonus or additional allowance.
+BETTA : A variable bonus or allowance.
+Example Values: 0
+Purpose: Captures any additional payments beyond the fixed salary.
+7. EARNED SALARY
+Description: Components related to earned salary.
+EARNE D BASIC : Earned basic salary based on attendance.
+EARNE D HRA : Earned HRA based on attendance.
+GROSS S SALARY : Gross salary after considering attendance and other earnings.
+OT : Overtime earnings.
+BETTA : Bonus or additional allowance.
+FINAL GROSS $ : Final gross salary after all additions.
+Example Values:
+EARNE D BASIC: 14000
+EARNE D HRA: 6000
+GROSS S SALARY: 20000
+OT: 0
+BETTA: 0
+FINAL GROSS $: 20000
+Purpose: Calculates the total earnings before deductions.
+8. DEDUCTION
+Description: Various statutory and voluntary deductions.
+EPF : Employee Provident Fund contribution.
+VPF : Voluntary Provident Fund contribution.
+ESI : Employees' State Insurance contribution.
+FINE : Any fines or penalties.
+CREDIT T : Credit adjustments (if applicable).
+SALAR Y ADVA NCE : Salary advance taken by the employee.
+TOTAL DEDUC TION : Total deductions from the gross salary.
+Example Values:
+EPF: 1800
+VPF: 300
+ESI: 150
+FINE: 0
+CREDIT T: 0
+SALAR Y ADVA NCE: 0
+TOTAL DEDUC TION: 2250
+Purpose: Tracks all deductions made from the gross salary.
+9. NET SALARY
+Description: The final take-home salary after all deductions.
+Example Values: 17750
+Purpose: Shows the actual amount the employee receives.
+10. REMARKS
+Description: Additional notes or comments about the employee's status or payroll.
+Example Values: ESI Not Eligible
+Purpose: Provides context or special instructions.
+Sample Row Analysis
+Row 1: CEO
+DESIGNATION: CEO
+DEPARTMENT: OPERATIONS
+DATE OF JOINING: 6/1/2012
+FIXED SALARY:
+FIXED BASIC: 25000
+FIXED HRA: 7500
+DAYS/HOURS:
+MONTH DAYS: 30
+PRESENT DAYS: 30
+PAID DAYS: 0
+PER DAY SALARY: 7500
+OT HOURS: 0
+PER DAY: 0
+EARNED SALARY:
+EARNE D BASIC: 14000
+EARNE D HRA: 6000
+GROSS S SALARY: 20000
+OT: 0
+BETTA: 0
+FINAL GROSS $: 20000
+DEDUCTION:
+EPF: 1800
+VPF: 300
+ESI: 150
+FINE: 0
+CREDIT T: 0
+SALAR Y ADVA NCE: 0
+TOTAL DEDUC TION: 2250
+NET SALARY: 17750
+REMARKS: None
+Key Observations
+EPF Deduction:
+Calculated as 12% of the basic salary + DA .
+Example: For the CEO, EPF = 12% of 25000 = 3000, but only 1800 is deducted (likely due to the cap on EPF contributions).
+VPF Deduction:
+Voluntary contribution by the employee.
+Example: For the CEO, VPF = 300.
+ESI Deduction:
+Applicable for employees earning up to ₹21,000/month.
+Example: For the CEO, ESI = 150.
+Overtime (OT):
+Not applicable for most employees in this table (OT HOURS = 0).
+Remarks:
+Some employees have remarks like "ESI Not Eligible," indicating they are not covered under ESI due to exceeding the income limit.

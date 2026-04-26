@@ -1,0 +1,51 @@
+There is a Site Visit form in our application. There are different forms that serve three different purposes. This form is connected with many important tasks. For example, it is crucial for generating quotations, and there is also a Site Visit Details form where the site visit information is displayed.
+
+Now, the Site Visit form used by the Marketing team in the "Project Type" step needs some changes. When making these changes, it's important to understand what other workflows are connected to this form so that we can ensure no critical functionality is missed.
+
+The required changes are:
+In Project Type, there are five types:
+
+On Grid
+Off Grid
+Hybrid
+Solar Water Heater
+Solar Water Pump
+Some project types have a field called Panel Count. Change its name to Total Panel Count.
+
+This value should be calculated based on two new fields added above: DCR and NON DCR.
+When the user clicks either DCR or NON DCR, the respective panel count field should appear, allowing the user to enter a number.
+The Total Panel Count should reflect the sum of DCR and NON DCR panel counts.
+In all project types, after Lightning Arrest, add a checkbox labeled Electrical Accessories.
+
+If selected, a new field Electrical Count should appear.
+This count should be automatically filled based on the Inverter Count provided.
+Change the field name Inverter Watts to Inverter KW.
+Remove the field Structure Height (ft) from all project types.
+In project types that include Panel Watt, add a new field called Panel Type with the following options:
+
+Bifacial
+Topcon
+Mono-PERC
+Enhance the Panel Watt field:
+
+When the user clicks the field, they should be able to type a value.
+If the value exists in the list, it should be suggested.
+If not, the user can manually enter and use that wattage value.
+Wherever Inverter Details are collected in the Project Type section:
+
+Rename Inverter Watts to Inverter KW and remove the existing Inverter KW field.
+The new Inverter KW field should allow users to type a value.
+
+If the value exists in the list, it should be suggested.
+If not, the user can manually enter and use that value.
+In most project types, there is a field to select Inverter Phase (Single Phase or Three Phase).
+
+This should either be auto-selected or manually selectable based on the Inverter KW value.
+
+If Inverter KW is below 6 KW → Single Phase
+If Inverter KW is 6 KW or above → Three Phase
+In the Site Visit form, Step 2 collects Customer Details.
+
+At the end of this section, add a mandatory field labeled Source, where the user can enter a name.
+ 
+Make sure to use high-quality coding methods and best practices to implement these changes efficiently and reliably.

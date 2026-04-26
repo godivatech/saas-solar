@@ -1,0 +1,100 @@
+Site Visit Customer Data → Quotation Customer Details
+├── customer.name → customerName
+├── customer.mobile → customerMobile  
+├── customer.address → customerAddress
+├── customer.ebServiceNumber → ebServiceNumber
+├── customer.propertyType → propertyType
+├── customer.location → siteLocation
+└── siteInLocation → installationLocation
+```
+
+#### **Marketing Data → Project Specifications Mapping**
+
+**On-Grid Solar Project Mapping:**
+```
+marketingData.onGridConfig → quotation.onGridProject
+├── solarPanelMake[] → solarPanels.brands[]
+├── panelWatts → solarPanels.wattagePerPanel
+├── panelCount → solarPanels.totalPanels
+├── inverterMake[] → inverters.brands[]
+├── inverterWatts → inverters.capacity
+├── inverterPhase → inverters.phaseType
+├── lightningArrest → safetyEquipment.lightningArrest
+├── earth → earthingSystem.type
+├── structureType → mountingStructure.type
+├── structureHeight → mountingStructure.height
+├── gpStructure.{lowerEndHeight, higherEndHeight} → mountingStructure.gpDetails
+├── monoRail.type → mountingStructure.monoRailType
+├── civilWorkScope → workScope.civilWork
+├── netMeterScope → workScope.netMeterWork
+├── projectValue → pricing.estimatedValue
+└── others → additionalSpecifications
+```
+
+**Off-Grid Solar Project Mapping:**
+```
+marketingData.offGridConfig → quotation.offGridProject
+├── [All On-Grid mappings] +
+├── batteryBrand → batteries.brand
+├── batteryType → batteries.type
+├── batteryAH → batteries.ampHours
+├── voltage → batteries.systemVoltage
+├── batteryCount → batteries.quantity
+└── batteryStands → batteries.standConfiguration
+```
+
+**Hybrid Solar Project Mapping:**
+```
+marketingData.hybridConfig → quotation.hybridProject
+├── [All On-Grid + Off-Grid mappings] +
+├── electricalWorkScope → workScope.electricalWork
+└── netMeterScope → workScope.netMeterWork
+```
+
+**Water Heater Project Mapping:**
+```
+marketingData.waterHeaterConfig → quotation.waterHeaterProject
+├── brand → waterHeater.manufacturerBrand
+├── litre → waterHeater.capacityLitres
+├── heatingCoil → waterHeater.heatingElement
+├── floor → installation.floorLevel
+├── plumbingWorkScope → workScope.plumbingWork
+├── civilWorkScope → workScope.civilWork
+└── projectValue → pricing.estimatedValue
+```
+
+**Water Pump Project Mapping:**
+```
+marketingData.waterPumpConfig → quotation.waterPumpProject
+├── hp → waterPump.horsePower
+├── drive → waterPump.driveType
+├── panelBrand[] → solarPanels.brands[]
+├── panelCount → solarPanels.totalPanels
+├── structureHeight → mountingStructure.height
+├── structureType → mountingStructure.type
+├── plumbingWorkScope → workScope.plumbingWork
+├── civilWorkScope → workScope.civilWork
+└── projectValue → pricing.estimatedValue
+```
+
+#### **Technical Data → Installation Requirements Mapping**
+```
+technicalData → quotation.installationRequirements
+├── serviceTypes[] → projectTypes[]
+├── workType → installationType
+├── workingStatus → installationStatus
+├── teamMembers[] → assignedTeam[]
+├── description → technicalNotes
+└── pendingRemarks → pendingIssues
+```
+
+#### **Admin Data → Process & Documentation Mapping**
+```
+adminData → quotation.processTracking
+├── bankProcess.{step, description} → subsidyProcess.bankStage
+├── ebProcess.{type, description} → utilityProcess.ebStage  
+├── purchase → procurementNotes
+├── driving → logisticsNotes
+├── officialCashTransactions → paymentNotes
+└── others → administrativeNotes
+```

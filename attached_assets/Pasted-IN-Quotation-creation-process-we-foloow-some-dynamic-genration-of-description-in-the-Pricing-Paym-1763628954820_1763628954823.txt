@@ -1,0 +1,43 @@
+IN Quotation creation process we foloow some dynamic genration of description in the "Pricing & Payment Terms" step every thing works perfect
+
+just the kw comes in decimal value for examble in the previouse step projectconfiguration system capacity KW is calucltaed automatically and i think we already mention to round the values using some formula or rules i dont know you have to tell me so the issue is this is reflect in description as decimal not in whole value so it affect after the pdf is genrated also find the exact root cause
+
+Perfect! Now I've found the complete root cause. The issue exists in MULTIPLE places:
+
+🎯 Complete Root Cause Analysis:
+The KW decimal issue occurs in 3 key locations:
+
+1. Frontend Description Generation (client/src/pages/quotation-creation.tsx, Line 212-276)
+The generateProjectDescription function:
+
+✅ On-Grid (Line 217): Uses Math.floor() - Correct
+❌ Hybrid (Line 239): Uses raw systemKW decimal - Wrong
+❌ Water Pump (Line 259): Calculates raw decimal totalKW - Wrong
+2. Backend Description Generation (server/services/quotation-template-service.ts)
+The calculatePricingBreakdown method:
+
+✅ On-Grid (Line 1297): Uses Math.floor(kw) - Correct
+❌ Hybrid (Line 1371): Uses raw totalKW_hybrid decimal - Wrong
+❌ Water Pump (Line 1432): Uses raw totalKW_pump decimal - Wrong
+3. PDF Generation (server/services/quotation-pdf-service.ts, Line 435-436)
+Uses this.formatNumber(template.pricingBreakdown.kw) which displays the KW value in the pricing table.
+
+💡 Important Discovery:
+There's already a helper function created for this purpose at Line 369-376:
+
+static formatKWForDisplay(kw: number): string {
+if (kw < 1) {
+return kw.toFixed(2).replace(/\.?0+$/, ''); // Keep decimals for sub-1kW
+}
+return Math.floor(kw).toString(); // Whole number for >= 1kW
+}
+ 
+But it's not being used in the description generation!
+
+✅ The Solution:
+Apply the rounding logic (using formatKWForDisplay or Math.floor) consistently in:
+
+Frontend generateProjectDescription for Hybrid and Water Pump
+Backend calculatePricingBreakdown for Hybrid and Water Pump descriptions
+Verify PDF generation uses rounded values
+This will ensure the KW values appear as whole numbers in the description throughout the "Pricing & Payment Terms" step and the generated PDF.

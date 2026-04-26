@@ -1,0 +1,130 @@
+In the quotation template for BOM, we use a lot of mocked data which is completely incorrect.
+Actually, we have two sources to prepare a quotation: one is manual entry, and the other is from a site visit.
+Both are essentially the same—only the way details are filled differs. In the "From Site Visit" option, partial details are fetched from the actual site visit, which is now working. You can see this in the application.
+Now, for BOM, we should calculate the quotation details properly. I’ll explain with an example image how the values are derived so you get a clear idea.
+In the image, there are two parts shown. First: "Quotation for 3 kW Ongrid Solar Power Generation System" The "3 kW" value is calculated as follows:
+Panel watts × Total panel count For example, if the total is 3120 watts, then we take the first digit as 3 kW.
+Next, if the user selects a project value of ₹2,15,000.00, we need to split and use it in the table titled "Quotation for 3 kW Ongrid Solar Power Generation System."
+Example: Total amount is ₹2,15,000.00 (including GST)
+Step 1: Calculate Base Price (Before GST) Rate per kW × Number of kW = Base Price ₹65,809.61 × 3 ≈ ₹197,428.83 ≈ ₹1,97,429 ✅ This matches the base price in the summary.
+Step 2: Calculate GST GST per kW × Number of kW = Total GST ₹5,857 × 3 = ₹17,571
+Or using the percentage formula: GST = Base Price × 8.9% = ₹197,429 × 0.089 ≈ ₹17,571 ✅ Matches the GST in the summary.
+Step 3: Calculate Total Price Total Price = Base Price + GST = ₹1,97,429 + ₹17,571 ≈ ₹2,15,000
+Step 4: GST per kW GST per kW = Total GST ÷ kW = ₹17,571 ÷ 3 ≈ ₹5,857 ✅ Conclusion:
+•	Rate per kW × Quantity = Base Price
+•	Base Price × GST % = Total GST
+•	GST per kW = Total GST ÷ Quantity
+•	Total Price = Base Price + Total GST
+Everything matches perfectly.
+We should also implement flexible GST entry in this quotation preparation.
+BOM Section
+Total Amount ₹2,15,000 – Subsidy Amount ₹78,000 = ₹1,37,000
+Most importantly, subsidy applies only if the project type is residential.
+•	For 1 kW: ₹30,000
+•	For 2 kW: ₹60,000
+•	For 3–10 kW: ₹78,000
+•	Above 10 kW: No subsidy
+BOM Table
+Phase Inverter-KW Panel Watts 1 3 3240
+•	"1" comes from the phase selected during site visit (single or three-phase)—this is dynamic.
+•	"3" is the inverter kW selected.
+•	"3240" is calculated as panel watts × total panel count.
+Image Breakdown
+2nd Image: Solar Panel (D)
+•	Description: Default, editable
+•	Type: Bifacial (from Form also editable)
+•	Rating: From panel watts selected in form
+•	Watts: Constant
+•	Make: From form (supports multiple selections)
+•	Qty: Total panel count
+•	Unit: Constant
+3rd Image: Inverter Data
+•	Description: Same as 2nd image
+•	Type: MPPT (constant, editable)
+•	Volt: 230 if single-phase, 415 if three-phase(based on what phase in the form choosed)
+•	Rating: Based on inverter watts selected
+•	KW: Constant
+•	Make: Growatt/Polycab (from form support multiple selection in the form)
+•	Qty: From form based on choosed inverter Qty in the Form 
+•	Unit: Constant
+4th Image: Panel Mounting Structure
+•	Description: Constant, editable
+•	Type: GI (from what we choose “Structure Type” field in the form)
+•	Volt: NA same always
+•	KW: Constant
+•	Make: Reputed (constant also editable)
+•	Qty: 1 (based on inverter count)
+•	Unit: Constant
+5th Image: ACDB with MCB
+•	Description: Constant
+•	Type: AC always same for this 
+•	Volt: Based on inverter Volt (e.g., if 230 in inverter volt then here also 230 )
+•	Rating: Based on inverter KW
+•	KW: Constant
+•	Make: Reputed
+•	Qty: 1 (Based on Inverter count)
+•	Unit: Constant
+6th Image: DCDB with MCB
+•	Description: Constant
+•	Type: DC is always same for this
+•	Volt: 600 always same for this 
+•	Rating: Based on inverter KW
+•	KW: Constant
+•	Make: Reputed
+•	Qty: 1
+•	Unit: Constant
+7th Image: DC Cable
+•	Description: Based on cable selected in form
+•	Type: DC because we selected DC cable 
+•	Volt: NA always same for this 
+•	Rating: 4 
+•	SQ.MM: Constant
+•	Make: Mardia/Polycab
+•	Qty: 20 (if inverter >10 kW, then 40)
+•	Unit: Constant
+8th Image: AC Cable
+•	Description: Based on form
+•	Type: Constant
+•	Volt: Constant
+•	Rating: 4
+•	SQ.MM: Constant
+•	Make: Mardia/Polycab
+•	Qty: 15 (if inverter >10 kW, then 30)
+•	Unit: Constant
+
+
+9th Image: Earthing
+•	Description: Added if earthing is selected in form
+•	Type: GI (from structure type)
+•	Volt: Constant
+•	Rating: 3
+•	Feet: Constant
+•	Make: Constant
+•	Qty: 1 (if only AC or DC cable selected), otherwise 2
+•	Unit: Constant
+10th Image: Lightning Arrestor
+•	Description: Added if selected in form
+•	Type: GI (from structure type)
+•	Volt: NA
+•	Rating: 3
+•	Feet: Constant
+•	Make: Constant
+•	Qty: 1
+•	Unit: Constant
+11th Image: Electrical Accessories
+•	Description: Added if selected in form
+•	Type: NA
+•	Volt: Constant
+•	Rating: 3
+•	KW: Constant
+•	Make: Constant
+•	Qty: 1
+•	Unit: Constant
+   12th Image: Final Two Row
+    Entire row is always the same
+
+
+
+
+Think Hard
+Be like a SOftware engineer in Google and implement this

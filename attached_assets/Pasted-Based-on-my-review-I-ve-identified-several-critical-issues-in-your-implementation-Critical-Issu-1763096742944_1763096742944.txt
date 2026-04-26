@@ -1,0 +1,35 @@
+Based on my review, I've identified several critical issues in your implementation:
+
+Critical Issues Found:
+1. Off-Grid Description (Line 1295)
+Issue: Using backslash \\ instead of forward slash / for voltage separator
+Current: 1KVA\\24v
+Should be: 1KVA/24v
+2. Hybrid Description (Line 1333)
+Issue: Battery brand shows incorrect capitalization
+The code capitalizes the battery brand when it should preserve the actual value from the form
+3. Water Heater Description (Lines 1356-1362)
+Issue: Formatting problems with heating coil and transport text
+The newlines (\n) might not render properly in the PDF
+Should conditionally include "And Transport Including GST" only when labourAndTransport is checked
+4. Water Pump Description (Line 1396)
+Issue: Redundant text - "hp Drive" appears twice
+Current: 5 hp Drive 5 kw... 5 hp Drive 3-Phase
+Should clean up the repetition
+5. 🚨 MAJOR: Water Heater BOM Generation (Lines 1067-1124)
+Critical Issue: Generates a MULTI-ROW detailed BOM table
+Requirement: Should be a SINGLE-ROW simplified BOM with only Description/Qty/Rate/Amount
+Current: Creates separate rows for Water Heater, Heating Coil, Plumbing Materials, Installation
+Should be: ONE row with the full description (from pricing breakdown) + qty + rate + amount
+6. 🚨 MAJOR: Water Pump BOM Generation (Lines 1130-1212)
+Critical Issue: Same as water heater - generates multi-row BOM
+Requirement: Should be a SINGLE-ROW BOM with Description/Qty/Rate/Amount
+Current: Creates separate rows for Pump, Panels, Controller, Structure, Installation
+Should be: ONE row with the full description (from pricing breakdown) + qty + rate + amount
+7. PDF Template (Partially Correct)
+✅ Good: Correctly hides "Quotation Pricing Details" table for water utilities (line 416)
+✅ Good: Correctly hides single-row summary table above BOM for water utilities (line 472)
+✅ Good: Uses simplified BOM table for water utilities (line 513)
+❌ BUT: The BOM data itself is still multi-row instead of single-row
+Summary
+The description generation logic has minor formatting issues, but the biggest problem is that the Water Heater and Water Pump BOM generation creates detailed multi-row tables when they should create single-row entries similar to the "Quotation Pricing Details" format—just one row with the full description plus quantity, rate, and amount.

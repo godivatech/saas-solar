@@ -1,0 +1,107 @@
+Project Form Input Specification 
+This document outlines the required input fields and structural changes for the customer-facing form, 
+categorized by system type: On-Grid, Off-Grid, Hybrid, Water Heater, and Water Pump. 
+⚡    On-Grid System 
+1. Field: Floor 
+ Input: dropdown box (floor level) – {0 to 4} 
+2. Structure 
+ Type: Dropdown with two options 
+o GP Structure – Selection Box 
+ Sub-fields: Drop down box 
+ Lower End Height – {0 to 14} 
+ Higher End Height – {0 to 14} 
+o Mono Rail 
+ Sub-options: dropdown box 
+ Mini Rail  
+ Long Rail 
+3. Civil Work 
+ Scope: Dropdown 
+o Options: 
+ Customer Scope 
+ Company Scope 
+4. Net Meter 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+⚡ Off-Grid System 
+1. Field: Floor 
+ Input: Same as On-Grid {0 to 4} 
+2. Structure 
+ Type: Dropdown with two options 
+o GP Structure 
+ Sub-fields: 
+o Mono Rail 
+ Lower End Height - {0 to 14} 
+ Higher End Height - {0 to 14} 
+ Sub-options: 
+ Mini Rail 
+ Long Rail 
+3. Civil Work 
+ Scope: Dropdown Box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+⚡ Hybrid System 
+1. Field: Floor 
+ Input: Same as On-Grid - {0 to 4} 
+2. Structure 
+ Type: Dropdown with two options 
+o GP Structure 
+ Sub-fields: 
+ Lower End Height - {0 to 14} 
+ Higher End Height - {0 to 14} 
+o Mono Rail 
+ Sub-options: 
+ Mini Rail 
+ Long Rail 
+3. Electrical Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope  
+ Company Scope  
+4. Civil Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+5. Net Meter 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+  
+⚡ Water Heater System 
+1. Field: Floor 
+ Input: dropdown box {0 to 04} 
+2. Plumbing Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+3. Civil Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+⚡ Water Pump System 
+1.Structure 
+ Type: Dropdown with two options 
+o GP Structure 
+ Sub-fields: 
+ Lower End Height - {0 to 14} 
+ Higher End Height - {0 to 14} 
+o Mono Rail 
+ Sub-options: 
+ Mini Rail 
+ Long Rail 
+2. Plumbing Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope 
+3. Civil Work 
+ Scope: Dropdown box 
+o Options: 
+ Customer Scope 
+ Company Scope

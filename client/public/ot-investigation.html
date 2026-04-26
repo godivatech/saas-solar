@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OT Bug Investigation Results</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        h1 { color: #4ec9b0; }
+        h2 { color: #4fc1ff; margin-top: 30px; }
+        .result { background: #2d2d30; padding: 15px; border-left: 4px solid #4ec9b0; margin: 10px 0; }
+        .key { color: #9cdcfe; }
+        .value { color: #ce9178; }
+        .error { color: #f48771; }
+        button { background: #0e639c; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #1177bb; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>🔍 OT Hours Bug Investigation</h1>
+    <button onclick="runInvestigation()">Run Investigation</button>
+    <div id="results"></div>
+
+    <script>
+        async function runInvestigation() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+                
+                if (!token) {
+                    results.innerHTML = '<p class="error">❌ No auth token found. Please login first.</p>';
+                    return;
+                }
+
+                const response = await fetch('http://localhost:5000/api/test/investigate-ot-bug', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    results.innerHTML = `<div class="error"><h2>❌ Investigation Failed</h2><p>${data.message}</p></div>`;
+                    return;
+                }
+
+                // Display results
+                let html = '';
+
+                // Summary
+                html += '<div class="result"><h2>📊 SUMMARY</h2>';
+                html += `<p><span class="key">Session Found:</span> <span class="value">${data.summary.sessionFound}</span></p>`;
+                html += `<p><span class="key">Stored Hours:</span> <span class="value">${data.summary.storedHours}h</span></p>`;
+                html += `<p><span class="key">Calculated Hours:</span> <span class="value">${data.summary.calculatedHours}h</span></p>`;
+                html += `<p><span class="key">Discrepancy:</span> <span class="value">${data.summary.discrepancy.toFixed(2)}h ❌</span></p>`;
+                html += `<p><span class="key">Was Auto-Closed:</span> <span class="value">${data.summary.wasAutoCompleted}</span></p>`;
+                html += `<p><span class="key">Review Action:</span> <span class="value">${data.summary.reviewAction}</span></p>`;
+                html += `<p><span class="key">Other Affected Sessions:</span> <span class="value">${data.summary.affectedSessionsFound}</span></p>`;
+                html += '</div>';
+
+                // Q1: Session State
+                const q1 = data.detailedAnswers.question1_sessionState;
+                html += '<div class="result"><h2>1️⃣ SESSION STATE (FACT CHECK)</h2>';
+                html += `<p><span class="key">Session ID:</span> ${q1.sessionId}</p>`;
+                html += `<p><span class="key">Date:</span> ${q1.date}</p>`;
+                html += `<p><span class="key">Type:</span> ${q1.otType}</p>`;
+                html += `<p><span class="key">Status:</span> ${q1.status}</p>`;
+                html += `<p><span class="key">Start Time:</span> ${q1.startTimeFormatted}</p>`;
+                html += `<p><span class="key">End Time:</span> ${q1.endTimeFormatted}</p>`;
+                html += `<p><span class="key">OT Hours (stored):</span> <span class="value">${q1.otHours}h</span></p>`;
+                html += `<p><span class="key">Calculated Hours:</span> <span class="value">${q1.calculatedHours}h</span></p>`;
+                html += `<p><span class="key">Discrepancy:</span> <span class="error">${q1.discrepancy.toFixed(2)}h</span></p>`;
+                html += `<p><span class="key">Auto Closed At:</span> ${q1.autoClosedAt || 'NOT AUTO-CLOSED'}</p>`;
+                html += `<p><span class="key">Auto Close Note:</span> ${q1.autoClosedNote || 'N/A'}</p>`;
+                html += `<p><span class="key">Review Action:</span> <span class="value">${q1.reviewAction || 'NOT REVIEWED'}</span></p>`;
+                html += `<p><span class="key">Review Notes:</span> ${q1.reviewNotes || 'N/A'}</p>`;
+                html += `<p><span class="key">Original OT Hours:</span> ${q1.originalOTHours || 'N/A'}</p>`;
+                html += `<p><span class="key">Adjusted OT Hours:</span> ${q1.adjustedOTHours || 'N/A'}</p>`;
+                html += '</div>';
+
+                // Q2: Approval Method
+                const q2 = data.detailedAnswers.question2_approvalMethod;
+                html += '<div class="result"><h2>2️⃣ APPROVAL METHOD</h2>';
+                html += `<p><span class="key">Action:</span> <span class="value">${q2.action}</span></p>`;
+                html += `<p><span class="key">Interpretation:</span> <span class="error">${q2.interpretation}</span></p>`;
+                html += '</div>';
+
+                // Q3: Capping Logic
+                const q3 = data.detailedAnswers.question3_cappingLogic;
+                html += '<div class="result"><h2>3️⃣ CAPPING LOGIC</h2>';
+                html += `<p><span class="key">Max OT Hours Per Day:</span> ${q3.maxOTHoursPerDay}h</p>`;
+                html += `<p><span class="key">Default OT Rate:</span> ${q3.defaultOTRate}</p>`;
+                html += `<p><span class="key">Weekend OT Rate:</span> ${q3.weekendOTRate}</p>`;
+                html += `<p><span class="key">Weekend Days:</span> ${q3.weekendDays?.join(', ') || 'N/A'}</p>`;
+                html += `<p><span class="key">Is Stored Hours Equal to Max:</span> ${q3.isStoredHoursEqualToMax}</p>`;
+                html += '</div>';
+
+                // Q4: Other Affected Sessions
+                const q4 = data.detailedAnswers.question4_otherAffectedSessions;
+                html += '<div class="result"><h2>4️⃣ OTHER AFFECTED SESSIONS</h2>';
+                html += `<p><span class="key">Total Attendance Checked:</span> ${q4.totalAttendanceChecked}</p>`;
+                html += `<p><span class="key">Affected Sessions Count:</span> <span class="error">${q4.affectedSessionsCount}</span></p>`;
+                if (q4.affectedSessions.length > 0) {
+                    html += '<p><span class="key">Affected Sessions:</span></p><pre>';
+                    q4.affectedSessions.forEach((s, i) => {
+                        html += `${i + 1}. ${s.date} - ${s.userName} (${s.userId})\n`;
+                    });
+                    if (q4.hasMoreThan10) {
+                        html += `... and ${q4.affectedSessionsCount - 10} more`;
+                    }
+                    html += '</pre>';
+                }
+                html += '</div>';
+
+                // Q5: Design Decision
+                const q5 = data.detailedAnswers.question5_designDecision;
+                html += '<div class="result"><h2>5️⃣ DESIGN DECISION</h2>';
+                html += `<p><span class="key">Current Behavior:</span> ${q5.currentBehavior}</p>`;
+                html += `<p><span class="key">Recommended Fix:</span> ${q5.recommendedFix}</p>`;
+                html += `<p><span class="key">Needs User Decision:</span> ${q5.needsUserDecision}</p>`;
+                html += '</div>';
+
+                // Full JSON
+                html += '<div class="result"><h2>📋 FULL JSON RESPONSE</h2>';
+                html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                html += '</div>';
+
+                results.innerHTML = html;
+
+            } catch (error) {
+                results.innerHTML = `<div class="error"><h2>❌ Error</h2><p>${error.message}</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html>

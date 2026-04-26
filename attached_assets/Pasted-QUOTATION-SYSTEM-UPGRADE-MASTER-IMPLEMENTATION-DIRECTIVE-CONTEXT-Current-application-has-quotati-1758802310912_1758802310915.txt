@@ -1,0 +1,188 @@
+QUOTATION SYSTEM UPGRADE - MASTER IMPLEMENTATION DIRECTIVE
+CONTEXT
+
+Current application has /quotations page to list created quotations.
+
+The /quotations/new route exists as a dummy link only; no component or handler is implemented.
+
+The business process requires transforming this into a fully functional quotation creation system that:
+
+Integrates with the three-department site visit system (Technical, Marketing, Admin).
+
+Allows creating a new quotation manually from scratch.
+
+Allows creating a quotation from site visit data (with auto-fill + missing field completion).
+
+Produces an output identical to the company’s current manual quotation format (see reference doc: Q-1052 … Ongrid … .docx).
+
+This document provides complete analysis + exact implementation steps to follow.
+
+PART 1: SYSTEM ANALYSIS
+1. Site Visit System
+
+Technical Dept: service types, work types, pending remarks, installation notes.
+
+Marketing Dept (quotation-critical): on-grid, off-grid, hybrid, water heater, water pump configs (20+ fields each).
+
+Admin Dept: bank processes, EB processes, purchases, cash transactions, official works.
+
+2. Customer Data
+
+Full details (name, mobile, address, EB number, property type, geo-location).
+
+3. Current Quotation Schema (Insufficient)
+
+Only holds {id, customerId, products[], total, status, createdAt}.
+
+Cannot handle project configurations, technical specs, subsidies, document attachments, etc.
+
+4. Missing Fields (Discovered)
+
+26+ fields missing in quotation creation (e.g. inverterKW, inverterQty, floorLevel, batteryStands, solarPanel in pump, siteVisit metadata, follow-up tracking).
+
+PART 2: FIELD MAPPING (SITE VISIT → QUOTATION)
+
+Customer Data → Quotation Customer
+
+Site Visit Metadata → Source Tracking
+
+Follow-up Data → Quotation Follow-up
+
+Marketing Data → Project Specifications (On-Grid, Off-Grid, Hybrid, Water Heater, Water Pump)
+
+Technical Data → Installation Requirements
+
+Admin Data → Process & Documentation
+
+This ensures zero data loss when converting from site visit to quotation.
+
+PART 3: WORKFLOWS
+Workflow A: Create from Scratch
+
+Go to /quotations/new
+
+Create new customer or select existing
+
+Select project type(s)
+
+Enter all specs manually
+
+Add pricing/terms → Generate quotation
+
+Workflow B: Create from Site Visit
+
+Go to /quotations/new
+
+Select "From Site Visit"
+
+Choose site visit → auto-fill available data
+
+Missing fields highlighted (critical/optional)
+
+User completes gaps → Generate quotation
+
+Partial Data Handling
+
+Auto-fill what exists
+
+Highlight gaps with color-coded indicators
+
+Progress bar per project type
+
+Allow drafts and completion later
+
+PART 4: UI/UX DESIGN PRINCIPLES
+
+Modular & Responsive (desktop, tablet, mobile)
+
+Step-based Wizard (Customer → Project → Pricing → Review → Generate)
+
+Indicators for Missing Fields (Red = critical, Orange = important, Gray = optional)
+
+Left Sidebar: workflow navigation + progress
+
+Main Area: step-by-step form
+
+Right Sidebar: site visit summary + missing field suggestions
+
+PART 5: IMPLEMENTATION PLAN
+Phase 1 (Week 1-2): Foundation
+
+Enhanced Quotation Schema in shared/schema.ts (support all 26+ mapped fields).
+
+Route Setup in client/src/App.tsx:
+
+<Route path="/quotations/new">
+  <ProtectedRoute requiredPermissions={["quotations.create"]}>
+    <DashboardLayout>
+      <Suspense fallback={<PageLoader />}>
+        <QuotationCreation />
+      </Suspense>
+    </DashboardLayout>
+  </ProtectedRoute>
+</Route>
+
+
+API Routes in server/routes.ts for quotation creation + site visit integration.
+
+Phase 2 (Week 3-4): Core Components
+
+QuotationCreation.tsx (wizard-based UI).
+
+ProjectConfig Components (OnGrid, OffGrid, Hybrid, WaterHeater, WaterPump).
+
+SiteVisitSelector, CompletenessIndicator, SmartSuggestionPanel.
+
+Phase 3 (Week 5-6): Advanced Features
+
+Pricing Engine (taxes, subsidies, labor, transport).
+
+Quotation Templates (PDF generation, reference doc match).
+
+Communication (email, WhatsApp, SMS).
+
+Phase 4 (Week 7-8): Testing & Optimization
+
+Unit + integration tests.
+
+Data integrity testing (all fields map correctly).
+
+Mobile responsiveness testing.
+
+UAT with real users.
+
+PART 6: SUCCESS CRITERIA
+
+✅ All 26+ identified fields mapped correctly.
+
+✅ Partial site visit → quotation flow works with clear indicators.
+
+✅ Quotation PDF matches reference format (Q-1052 doc).
+
+✅ Quotation creation time reduced by 60% using site visit auto-fill.
+
+✅ Mobile and desktop both fully functional.
+
+PART 7: IMMEDIATE NEXT ACTIONS (WEEK 1)
+
+Update shared/schema.ts with enhanced ComprehensiveQuotation schema (multi-project support, source tracking, follow-up fields, installation/admin mappings).
+
+Add missing route handler in App.tsx for /quotations/new.
+
+Implement API routes for creating quotations and fetching mapped site visit data.
+
+Build SiteVisitDataMapper + DataCompletenessAnalyzer services.
+
+FINAL DIRECTIVE
+
+Transform /quotations/new from a dummy link into a fully functional, data-integrated quotation creation system.
+
+Implement two workflows (manual + from site visit).
+
+Ensure all mapped fields are captured (no omissions).
+
+Produce output matching the reference quotation document.
+
+Follow phased plan (schema → route → UI → pricing → template → testing).
+
+This is mission-critical for business operations. Proceed with Phase 1 immediately.

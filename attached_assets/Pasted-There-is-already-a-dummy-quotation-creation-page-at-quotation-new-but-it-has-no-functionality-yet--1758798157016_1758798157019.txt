@@ -1,0 +1,80 @@
+There is already a dummy quotation creation page at /quotation/new, but it has no functionality yet.
+I want you to upgrade this into a fully functional quotation creation page based on the following requirements:
+
+1. Data Sources
+
+There are three site visit forms, each belonging to a different department.
+
+Each form collects different types of data.
+
+All data collected during site visits must be used to create a quotation.
+
+2. Quotation Page Functionality
+
+/quotation → shows the list of created quotations.
+
+/quotation/new → should be the quotation creation page.
+
+The quotation creation page must support two workflows:
+
+Create a new quotation from scratch.
+
+Select an existing customer → automatically fetch data from their site visit forms → populate the quotation page.
+
+Partial Data Handling:
+
+If a user’s site visit forms are only partially filled, the system must:
+
+Auto-fill whatever data exists.
+
+Clearly show which fields are missing.
+
+Allow manual entry of the missing fields before generating the quotation.
+
+This applies to all three site visit forms.
+
+Additional Fields:
+
+The reference document (attached_assets/Q-1052 Mr.P.S.Pradeep 3kw Ongrid 3 Phase_1758697262729.docx) contains some fields that are not collected in the site visit forms.
+
+These fields must also be available on the quotation creation page so that the final quotation matches what the company currently prepares manually.
+
+3. UI/UX Requirements
+
+Plan this as a senior UI/UX developer.
+
+The /quotation/new page should be:
+
+Flexible → supports both new and existing customer flows.
+
+Intuitive → highlight missing fields for manual completion.
+
+Modular → easy to extend if new forms or fields are added later.
+
+The quotation form should allow both:
+
+Automatic population of existing data.
+
+Manual input for corrections or missing information.
+
+4. Deliverable
+
+File Name: new_changes.txt (in the root directory).
+
+Content:
+
+A detailed plan/analysis for upgrading the dummy /quotation/new page.
+
+Must include:
+
+Data mapping (site visit forms → quotation fields).
+
+Workflow (new vs. existing customer, partial data handling).
+
+UI/UX design considerations.
+
+Handling of extra fields from the reference document.
+
+Do not implement yet. Only produce the detailed planning document.
+
+This feature is critical for the application. Plan very carefully and ensure nothing is missed in the flow.

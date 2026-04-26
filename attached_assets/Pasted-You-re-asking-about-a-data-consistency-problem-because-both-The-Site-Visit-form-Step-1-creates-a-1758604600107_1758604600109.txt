@@ -1,0 +1,75 @@
+You’re asking about a data consistency problem because both:
+
+The Site Visit form (Step 1) creates a new customer with only basic info (name, number, address).
+
+The Customers page (Add Customer modal) creates a customer with full details (more fields).
+
+Both save into the same customers collection.
+
+This can indeed cause issues:
+
+Duplicate customers (if the same person is entered via site visit and later in customers page).
+
+Incomplete customer records (site visit entry has only partial info).
+
+Confusion about which customer record is the “real one.”
+
+✅ Options to Handle This
+
+Unified Customer Record (Best Practice)
+
+Always write to the same customers collection.
+
+Site Visit form creates a minimal customer record (basic fields).
+
+Customers page modal allows enriching the same record (update/add more fields).
+
+This means every customer has a single record, but it may start as incomplete and later be updated.
+
+🔑 Key here: You need a unique identifier (mobile number or email) to merge/update instead of creating duplicates.
+
+Two-Step Customer Creation
+
+When added from Site Visit form, store them as "status": "prospect" or "incomplete".
+
+When added/edited from Customers page, allow enriching and flip "status": "verified" or "complete".
+
+This way, you can distinguish between basic site visit entries vs fully registered customers.
+
+De-duplication Logic
+
+Before inserting into customers, check if there’s an existing customer with the same mobile number.
+
+If exists → update the existing record instead of creating a new one.
+
+If not exists → create a new one.
+
+This avoids duplicates while still allowing both forms to feed into customers.
+
+⚡ Recommended Hybrid Approach
+
+Always store in one customers collection.
+
+Use mobile as the primary unique key.
+
+Site Visit form → creates minimal record (basic info).
+
+Customers page → enriches record (adds more fields, updates status).
+
+Add a field like:
+
+{
+  "profileCompleteness": "basic" | "full",
+  "createdFrom": "site_visit" | "customers_page"
+}
+
+
+so you know where the record originated and how complete it is.
+
+👉 This way:
+
+No duplicates.
+
+Customers can start “basic” and later become “full.”
+
+Both forms contribute to the same single source of truth.

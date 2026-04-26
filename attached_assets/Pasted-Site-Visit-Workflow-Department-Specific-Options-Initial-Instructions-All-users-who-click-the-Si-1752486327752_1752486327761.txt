@@ -1,0 +1,305 @@
+Site Visit Workflow & Department-Specific Options
+🔰 Initial Instructions
+All users who click the Site Visit button must first select the purpose of their visit:
+
+Options:
+
+Visit
+
+Installation
+
+Service
+
+Purchase
+
+EB Office
+
+AMC
+
+Bank
+
+Other
+
+✅ This selection is common for all departments with access to the Site Visit feature and serves as a confirmation of visit intent.
+
+🎯 Departments Allowed Site Visit Access
+Only the following departments can access Site Visit features:
+
+Technical
+
+Marketing
+
+Administration (Admin)
+
+✅ Ensure you check the available departments in the application before proceeding.
+
+🔧 Technical Department Site Visit Flow
+Required Steps:
+Site In Time Photo with Location
+
+Customer Details
+
+Name
+
+Mobile Number
+
+Address
+
+Selection Box: Residential / Commercial / Agri / Other
+
+Selection Box (Multi-select): On-grid / Off-grid / Hybrid / Solar Panel / Camera / Water Pump / Water Heater / Lights & Accessories / Others
+
+Type of Work
+
+Selection Box:
+
+Installation
+
+WiFi Configuration
+
+AMC
+
+Service
+
+Electrical Fault
+
+Inverter Fault
+
+Solar Panel Fault
+
+Wiring Issue
+
+Structure
+
+Welding Work
+
+Site Visit
+
+Light Installation
+
+Camera Fault
+
+Light Fault
+
+Repair
+
+Painting
+
+Cleaning
+
+Others
+
+Working Status
+
+Pending / Completed
+
+Pending Remarks
+
+Technical Team Members
+
+Site Out Time Photo with Location
+
+📸 Note: Site In and Out photos with location are mandatory and separate from attendance.
+
+📈 Marketing Department Site Visit Flow
+1. Site In Time with Location (Manual Entry)
+2. Customer Details (Manual Entry)
+Customer Name
+
+Mobile Number
+
+EB Service Number
+
+Address
+
+Location
+
+3. Customer Requirements Update
+Would like to update customer requirements? → Yes / No
+
+Type: Residential / Commercial / Agri / Other
+
+Description Type: On-grid / Off-grid / Hybrid / Water Heater / Water Pump / Lights & Accessories / Others
+
+🧾 Project Details by Category
+🔲 ON-GRID
+Solar Panel Make (Selection)
+
+Panel Watts
+
+Inverter Make (Manual Entry)
+
+Inverter Watts
+
+Inverter Phase
+
+Lightning Arrest
+
+Earth
+
+Floor
+
+Solar Panel No’s
+
+Structure Height
+
+Project Value
+
+Others
+
+Site Photos (1 to 20)
+
+Site Out Time with Location
+
+➕ Product Details:
+Solar Panel Brands: Renew, Premier, UTL Solar, Loom Solar, Kirloskar, Adani Solar, Vikram Solar
+
+Inverter Makes: Growatt, Deye, Polycab, UTL
+
+Inverter Phase: Single Phase, Three Phase, Earth, DC, AC
+
+Panel Watts: 530, 535, 550, 590
+
+Inverter Watts: 3kW, 4kW, 5kW, 10kW, 15kW, 30kW
+
+🔲 OFF-GRID
+Solar Panel (Selection)
+
+Panel Watts
+
+Inverter Make
+
+Inverter Watts
+
+Inverter Phase
+
+Lightning Arrest
+
+Earth
+
+Floor
+
+Solar Panel No’s
+
+Structure Height
+
+Battery Brand
+
+Voltage
+
+Battery No’s
+
+Battery Stands
+
+Others
+
+Project Value
+
+Site Photos (1 to 20)
+
+Site Out Time with Location
+
+➕ Product Details:
+Solar Panel Brands: Renew, Premier, UTL Solar, Loom Solar, Kirloskar, Adani Solar, Vikram Solar
+
+Inverter Makes: Growatt, Deye, Polycab, UTL
+
+Inverter Phase: Single Phase, Three Phase, Earth, 1. DC, 2. AC
+
+Panel Watts: 530, 535, 550, 590
+
+Inverter Watts: 3kW, 4kW, 5kW, 10kW, 15kW, 30kW
+
+Battery Brand: Exide, UTL
+
+🔲 HYBRID
+Solar Panel (Selection)
+
+Panel Watts
+
+Inverter Make
+
+Inverter Watts
+
+Inverter Phase
+
+Lightning Arrest
+
+Earth
+
+Floor
+
+Solar Panel No’s
+
+Structure Height
+
+Battery Brand
+
+Voltage
+
+Battery No’s
+
+Battery Stands
+
+Others
+
+Project Value
+
+Site Photos (1 to 20)
+
+Site Out Time with Location
+
+➕ Product Details:
+Solar Panel Brands: Renew, Premier, UTL Solar, Loom Solar, Kirloskar, Adani Solar, Vikram Solar
+
+Inverter Makes: Growatt, Deye, Polycab, UTL
+
+Inverter Phase: Single Phase, Three Phase, Earth, 1. DC, 2. AC
+
+Panel Watts: 530, 535, 550, 590
+
+Inverter Watts: 3kW, 4kW, 5kW, 10kW, 15kW, 30kW
+
+Battery Brand: Exide, UTL
+
+🔲 WATER HEATER
+Brand
+
+Litre
+
+Heating Coil
+
+Others
+
+Project Value
+
+Site Photos (1 to 20)
+
+Site Out Time with Location
+
+➕ Product Details:
+Brands: Venus, Pressurised / Non-Pressurised, Hykon
+
+🔲 WATER PUMP
+HP
+
+Drive
+
+Solar Panel
+
+Structure Height
+
+Panel Brand
+
+Panel No’s
+
+Project Value
+
+Others
+
+Site Photos (1 to 20)
+
+Site Out Time with Location
+
+➕ Product Details:
+Brands: Renew, Premier, UTL Solar, Loom Solar, Kirloskar, Adani Solar, Vikram Solar

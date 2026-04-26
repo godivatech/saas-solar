@@ -1,0 +1,156 @@
+auth-context.tsx:50 
+            
+            
+           GET https://ce141431-a3d6-4137-b7ca-3e016fe84d1e-00-qx53jyvysp1k.spock.replit.dev/api/users/profile?uid=uMzEPZ14fiegXXppvfKlQsLoGpv2 404 (Not Found)
+(anonymous) @ auth-context.tsx:50
+Promise.then
+(anonymous) @ auth-context.tsx:39
+(anonymous) @ firebase_auth.js?v=ff123a93:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=ff123a93:2741
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:2601
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:5121
+onAuthChange @ firebase.ts:55
+(anonymous) @ auth-context.tsx:35
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=ff123a93:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=ff123a93:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=ff123a93:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=ff123a93:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=ff123a93:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=ff123a93:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=ff123a93:19447
+performSyncWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18868
+flushSyncCallbacks @ chunk-RPCDYKBN.js?v=ff123a93:9119
+commitRootImpl @ chunk-RPCDYKBN.js?v=ff123a93:19432
+commitRoot @ chunk-RPCDYKBN.js?v=ff123a93:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=ff123a93:18805
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18718
+workLoop @ chunk-RPCDYKBN.js?v=ff123a93:197
+flushWork @ chunk-RPCDYKBN.js?v=ff123a93:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=ff123a93:384
+auth-context.tsx:50 
+            
+            
+           GET https://ce141431-a3d6-4137-b7ca-3e016fe84d1e-00-qx53jyvysp1k.spock.replit.dev/api/users/profile?uid=uMzEPZ14fiegXXppvfKlQsLoGpv2 404 (Not Found)
+(anonymous) @ auth-context.tsx:50
+Promise.then
+(anonymous) @ auth-context.tsx:39
+(anonymous) @ firebase_auth.js?v=ff123a93:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=ff123a93:2741
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:2601
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:5121
+onAuthChange @ firebase.ts:55
+(anonymous) @ auth-context.tsx:35
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=ff123a93:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=ff123a93:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=ff123a93:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=ff123a93:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=ff123a93:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=ff123a93:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=ff123a93:19447
+performSyncWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18868
+flushSyncCallbacks @ chunk-RPCDYKBN.js?v=ff123a93:9119
+commitRootImpl @ chunk-RPCDYKBN.js?v=ff123a93:19432
+commitRoot @ chunk-RPCDYKBN.js?v=ff123a93:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=ff123a93:18805
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18718
+workLoop @ chunk-RPCDYKBN.js?v=ff123a93:197
+flushWork @ chunk-RPCDYKBN.js?v=ff123a93:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=ff123a93:384
+queryClient.ts:15 
+            
+            
+           POST https://ce141431-a3d6-4137-b7ca-3e016fe84d1e-00-qx53jyvysp1k.spock.replit.dev/api/users 400 (Bad Request)
+apiRequest @ queryClient.ts:15
+(anonymous) @ auth-context.tsx:70
+Promise.then
+(anonymous) @ auth-context.tsx:39
+(anonymous) @ firebase_auth.js?v=ff123a93:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=ff123a93:2741
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:2601
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:5121
+onAuthChange @ firebase.ts:55
+(anonymous) @ auth-context.tsx:35
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=ff123a93:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=ff123a93:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=ff123a93:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=ff123a93:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=ff123a93:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=ff123a93:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=ff123a93:19447
+performSyncWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18868
+flushSyncCallbacks @ chunk-RPCDYKBN.js?v=ff123a93:9119
+commitRootImpl @ chunk-RPCDYKBN.js?v=ff123a93:19432
+commitRoot @ chunk-RPCDYKBN.js?v=ff123a93:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=ff123a93:18805
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18718
+workLoop @ chunk-RPCDYKBN.js?v=ff123a93:197
+flushWork @ chunk-RPCDYKBN.js?v=ff123a93:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=ff123a93:384
+auth-context.tsx:101 Error creating user profile: Error: 400: {"message":"User with this email already exists"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:22:3)
+    at async auth-context.tsx:70:44
+(anonymous) @ auth-context.tsx:101
+Promise.then
+(anonymous) @ auth-context.tsx:39
+(anonymous) @ firebase_auth.js?v=ff123a93:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=ff123a93:2741
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:2601
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:5121
+onAuthChange @ firebase.ts:55
+(anonymous) @ auth-context.tsx:35
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=ff123a93:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=ff123a93:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=ff123a93:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=ff123a93:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=ff123a93:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=ff123a93:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=ff123a93:19447
+performSyncWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18868
+flushSyncCallbacks @ chunk-RPCDYKBN.js?v=ff123a93:9119
+commitRootImpl @ chunk-RPCDYKBN.js?v=ff123a93:19432
+commitRoot @ chunk-RPCDYKBN.js?v=ff123a93:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=ff123a93:18805
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18718
+workLoop @ chunk-RPCDYKBN.js?v=ff123a93:197
+flushWork @ chunk-RPCDYKBN.js?v=ff123a93:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=ff123a93:384
+queryClient.ts:15 
+            
+            
+           POST https://ce141431-a3d6-4137-b7ca-3e016fe84d1e-00-qx53jyvysp1k.spock.replit.dev/api/users 400 (Bad Request)
+apiRequest @ queryClient.ts:15
+(anonymous) @ auth-context.tsx:70
+Promise.then
+(anonymous) @ auth-context.tsx:39
+(anonymous) @ firebase_auth.js?v=ff123a93:2745
+Promise.then
+registerStateListener @ firebase_auth.js?v=ff123a93:2741
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:2601
+onAuthStateChanged @ firebase_auth.js?v=ff123a93:5121
+onAuthChange @ firebase.ts:55
+(anonymous) @ auth-context.tsx:35
+commitHookEffectListMount @ chunk-RPCDYKBN.js?v=ff123a93:16915
+commitPassiveMountOnFiber @ chunk-RPCDYKBN.js?v=ff123a93:18156
+commitPassiveMountEffects_complete @ chunk-RPCDYKBN.js?v=ff123a93:18129
+commitPassiveMountEffects_begin @ chunk-RPCDYKBN.js?v=ff123a93:18119
+commitPassiveMountEffects @ chunk-RPCDYKBN.js?v=ff123a93:18109
+flushPassiveEffectsImpl @ chunk-RPCDYKBN.js?v=ff123a93:19490
+flushPassiveEffects @ chunk-RPCDYKBN.js?v=ff123a93:19447
+performSyncWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18868
+flushSyncCallbacks @ chunk-RPCDYKBN.js?v=ff123a93:9119
+commitRootImpl @ chunk-RPCDYKBN.js?v=ff123a93:19432
+commitRoot @ chunk-RPCDYKBN.js?v=ff123a93:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=ff123a93:18805
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=ff123a93:18718
+workLoop @ chunk-RPCDYKBN.js?v=ff123a93:197
+flushWork @ chunk-RPCDYKBN.js?v=ff123a93:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=ff123a93:384
+auth-context.tsx:101 Error creating user profile: Error: 400: {"message":"User with this email already exists"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:22:3)
+    at async auth-context.tsx:70:44
