@@ -1,18 +1,18 @@
-// This file is kept for backward compatibility during the Firestore migration
-// It provides a no-op implementation for any code still expecting the PostgreSQL connection
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema.postgres";
 
-console.log("PostgreSQL connection is deprecated - using Firestore instead");
+const { Pool } = pg;
 
-// Mock objects to prevent errors in case any code is still using these
-export const pool = {
-  connect: () => Promise.resolve(null),
-  query: () => Promise.resolve({ rows: [] }),
-  end: () => Promise.resolve(),
-};
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set. Please check your environment variables.");
+}
 
-export const db = {
-  select: () => ({ from: () => Promise.resolve([]) }),
-  insert: () => ({ values: () => ({ returning: () => Promise.resolve([]) }) }),
-  update: () => ({ set: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }) }),
-  delete: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }),
-};
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+export const db = drizzle(pool, { schema });
+
+console.log("✅ Neon PostgreSQL & Drizzle ORM connected successfully");

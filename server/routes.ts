@@ -4287,6 +4287,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // INVENTORY & PRODUCTS API ROUTES (Neon PostgreSQL)
+  // ============================================
+  app.get("/api/products", verifyAuth, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const search = (req.query.search as string) || "";
+      const sortBy = (req.query.sortBy as string) || "createdAt";
+      const sortOrder = (req.query.sortOrder as string) || "desc";
+
+      const result = await storage.listProducts({ search, page, limit });
+      let items = result.products || [];
+
+      if (search) {
+        const s = search.toLowerCase();
+        items = items.filter((p: any) =>
+          p.name?.toLowerCase().includes(s) ||
+          p.category?.toLowerCase().includes(s) ||
+          p.brand?.toLowerCase().includes(s) ||
+          p.sku?.toLowerCase().includes(s)
+        );
+      }
+
+      // Sort
+      items.sort((a: any, b: any) => {
+        let valA = a[sortBy] ?? "";
+        let valB = b[sortBy] ?? "";
+        if (sortBy === "price") {
+          valA = Number(a.sellingPrice) || 0;
+          valB = Number(b.sellingPrice) || 0;
+        } else if (sortBy === "quantity") {
+          valA = Number(a.currentStock) || 0;
+          valB = Number(b.currentStock) || 0;
+        }
+        if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+        if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+        return 0;
+      });
+
+      const totalItems = items.length;
+      const totalPages = Math.ceil(totalItems / limit) || 1;
+      const startIndex = (page - 1) * limit;
+      const paginated = items.slice(startIndex, startIndex + limit);
+
+      const formatted = paginated.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        type: p.category,
+        make: p.brand || p.model || "",
+        voltage: p.specifications?.voltage || "",
+        rating: p.specifications?.rating || "",
+        unit: p.unit || "Nos",
+        price: Number(p.sellingPrice) || 0,
+        quantity: Number(p.currentStock) || 0,
+        status: p.status || "in_stock"
+      }));
+
+      res.json({
+        data: formatted,
+        pagination: {
+          page,
+          limit,
+          totalItems,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      res.status(500).json({ message: "Failed to fetch products" });
+    }
+  });
+
+  app.get("/api/products/:id", verifyAuth, async (req, res) => {
+    try {
+      const product = await storage.getProduct(req.params.id);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      res.json(product);
+    } catch (error) {
+      console.error("Error fetching product:", error);
+      res.status(500).json({ message: "Failed to fetch product" });
+    }
+  });
+
+  app.post("/api/products", verifyAuth, async (req, res) => {
+    try {
+      const product = await storage.createProduct(req.body);
+      res.status(201).json(product);
+    } catch (error) {
+      console.error("Error creating product:", error);
+      res.status(500).json({ message: "Failed to create product" });
+    }
+  });
+
+  app.put("/api/products/:id", verifyAuth, async (req, res) => {
+    try {
+      const product = await storage.updateProduct(req.params.id, req.body);
+      res.json(product);
+    } catch (error) {
+      console.error("Error updating product:", error);
+      res.status(500).json({ message: "Failed to update product" });
+    }
+  });
+
+  app.delete("/api/products/:id", verifyAuth, async (req, res) => {
+    try {
+      await storage.deleteProduct(req.params.id);
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  // ============================================
   // ENTERPRISE HR MANAGEMENT API ROUTES
   // ============================================
 

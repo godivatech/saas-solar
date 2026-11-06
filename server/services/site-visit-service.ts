@@ -50,6 +50,31 @@ export class SiteVisitService {
 
       const docRef = await this.collection.add(firestoreData);
 
+      // Dual-write to Neon PostgreSQL for relational integrity
+      try {
+        const { db: pgDb } = await import("../db");
+        const { siteVisits } = await import("@shared/schema.postgres");
+        await pgDb.insert(siteVisits).values({
+          id: docRef.id,
+          tenantId: "adc11a73-7ef8-417b-b930-28d1d855d707",
+          userId: validatedData.userId,
+          department: validatedData.department,
+          visitPurpose: validatedData.visitPurpose,
+          status: validatedData.status || "in_progress",
+          siteInTime: validatedData.siteInTime,
+          siteOutTime: validatedData.siteOutTime || null,
+          customer: validatedData.customer,
+          location: validatedData.location || null,
+          technicalData: validatedData.technicalData || null,
+          marketingData: validatedData.marketingData || null,
+          adminData: validatedData.adminData || null,
+          sitePhotos: validatedData.sitePhotos || [],
+          notes: validatedData.notes || null
+        });
+      } catch (pgErr) {
+        console.warn("[SiteVisitService] Neon Postgres sync warning:", pgErr);
+      }
+
       const result = {
         id: docRef.id,
         ...this.convertFirestoreToSiteVisit(firestoreData)
@@ -157,6 +182,24 @@ export class SiteVisitService {
 
       await docRef.update(firestoreUpdates);
 
+      try {
+        const { db: pgDb } = await import("../db");
+        const { siteVisits } = await import("@shared/schema.postgres");
+        const { eq } = await import("drizzle-orm");
+        const pgUpdates: any = { updatedAt: new Date() };
+        if (updates.status !== undefined) pgUpdates.status = updates.status;
+        if (updates.siteOutTime !== undefined) pgUpdates.siteOutTime = new Date(updates.siteOutTime);
+        if (updates.technicalData !== undefined) pgUpdates.technicalData = updates.technicalData;
+        if (updates.marketingData !== undefined) pgUpdates.marketingData = updates.marketingData;
+        if (updates.adminData !== undefined) pgUpdates.adminData = updates.adminData;
+        if (updates.notes !== undefined) pgUpdates.notes = updates.notes;
+        if (updates.sitePhotos !== undefined) pgUpdates.sitePhotos = updates.sitePhotos;
+
+        await pgDb.update(siteVisits).set(pgUpdates).where(eq(siteVisits.id, id));
+      } catch (pgErr) {
+        console.warn("[SiteVisitService] Neon Postgres update warning:", pgErr);
+      }
+
       const updatedDoc = await docRef.get();
       if (!updatedDoc.exists) {
         throw new Error('Site visit not found');
@@ -185,6 +228,36 @@ export class SiteVisitService {
    */
   async getSiteVisitById(id: string): Promise<SiteVisit | null> {
     try {
+      // First check Neon PostgreSQL
+      try {
+        const { db: pgDb } = await import("../db");
+        const { siteVisits } = await import("@shared/schema.postgres");
+        const { eq } = await import("drizzle-orm");
+        const [v] = await pgDb.select().from(siteVisits).where(eq(siteVisits.id, id)).limit(1);
+        if (v) {
+          return {
+            id: v.id,
+            userId: v.userId,
+            department: v.department as any,
+            visitPurpose: v.visitPurpose,
+            status: v.status as any,
+            siteInTime: v.siteInTime,
+            siteOutTime: v.siteOutTime || undefined,
+            customer: v.customer as any,
+            location: (v.location as any) || undefined,
+            technicalData: (v.technicalData as any) || undefined,
+            marketingData: (v.marketingData as any) || undefined,
+            adminData: (v.adminData as any) || undefined,
+            sitePhotos: (v.sitePhotos as any[]) || [],
+            notes: v.notes || undefined,
+            createdAt: v.createdAt,
+            updatedAt: v.updatedAt
+          } as SiteVisit;
+        }
+      } catch (pgErr) {
+        // Fallback to Firestore
+      }
+
       const doc = await this.collection.doc(id).get();
 
       if (!doc.exists) {
@@ -361,6 +434,14 @@ export class SiteVisitService {
   async deleteSiteVisit(id: string): Promise<void> {
     try {
       await this.collection.doc(id).delete();
+      try {
+        const { db: pgDb } = await import("../db");
+        const { siteVisits } = await import("@shared/schema.postgres");
+        const { eq } = await import("drizzle-orm");
+        await pgDb.delete(siteVisits).where(eq(siteVisits.id, id));
+      } catch (pgErr) {
+        console.warn("[SiteVisitService] Neon Postgres delete warning:", pgErr);
+      }
     } catch (error) {
       console.error('Error deleting site visit:', error);
       throw new Error('Failed to delete site visit');

@@ -754,58 +754,64 @@ export class QuotationTemplateService {
       unit: "Set"
     });
 
-    // 6. DC Cable - Qty: 20m (40m if inverter >10 kW)
-    const dcCableQty = inverterKW > 10 ? 40 : 20;
+    // 6. DC Cable - Sized safely by system capacity
+    const dcCableRating = inverterKW > 50 ? "16 SQ.MM" : inverterKW > 20 ? "6 SQ.MM" : "4 SQ.MM";
+    const dcCableQty = inverterKW > 50 ? 100 : inverterKW > 10 ? 50 : 25;
     items.push({
       slNo: slNo++,
       description: "DC CABLE",
       type: "DC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: "1000V",
+      rating: dcCableRating,
+      make: "Mardia/Polycab/Siechem",
       qty: dcCableQty,
       unit: "Mtr"
     });
 
-    // 7. AC Cable - Qty: 15m (30m if inverter >10 kW)
-    const acCableQty = inverterKW > 10 ? 30 : 15;
+    // 7. AC Cable - Scaled strictly by AC ampacity to prevent fire hazards
+    const acCableRating = inverterKW > 60 ? "70 SQ.MM (4C XLPE Al/Cu)"
+      : inverterKW > 35 ? "35 SQ.MM (4C XLPE)"
+      : inverterKW > 20 ? "25 SQ.MM (4C XLPE)"
+      : inverterKW > 10 ? "16 SQ.MM (4C)"
+      : inverterKW > 5 ? "6 SQ.MM"
+      : "4 SQ.MM";
+
+    const acCableQty = inverterKW > 50 ? 80 : inverterKW > 10 ? 40 : 20;
     items.push({
       slNo: slNo++,
       description: "AC CABLE",
       type: "AC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: inverterVoltage,
+      rating: acCableRating,
+      make: "Polycab/Havells/KEI",
       qty: acCableQty,
       unit: "Mtr"
     });
 
-    // 8. Earthing - Add if earthing is selected
+    // 8. Earthing - Add if earthing is selected (CEA/MNRE compliant electrode sizing)
     if (project.earth && (typeof project.earth === 'string' || project.earth.length > 0)) {
       const earthType = structureType; // Use same type as structure
 
       // Determine earthing quantity based on AC/DC cable selection
-      // Qty: 2 if both AC and DC are covered (either as 'ac_dc' or separate 'ac'+'dc')
-      // Qty: 1 if only one type is selected
       let earthQty = 1;
       if (Array.isArray(project.earth)) {
-        // Array format: check if 'ac_dc' is present OR both 'ac' and 'dc' are present
         if (project.earth.includes('ac_dc') ||
           (project.earth.includes('ac') && project.earth.includes('dc'))) {
-          earthQty = 2;
+          earthQty = inverterKW > 10 ? 3 : 2; // Min 3 pits for commercial (>10kW)
         }
       } else if (typeof project.earth === 'string') {
-        // Single string format (legacy): 'ac_dc' means both
-        earthQty = project.earth === 'ac_dc' ? 2 : 1;
+        earthQty = project.earth === 'ac_dc' ? (inverterKW > 10 ? 3 : 2) : 1;
       }
+
+      const earthRating = inverterKW > 10 ? "2 Meter / 50mm Copper Bonded" : "2 Meter Chemical Electrode";
 
       items.push({
         slNo: slNo++,
         description: "Earthing",
         type: earthType,
         volt: "NA",
-        rating: "3 Feet",
-        make: "As per MNRE App",
+        rating: earthRating,
+        make: "As per MNRE/CEA Standards",
         qty: earthQty,
         unit: "Set"
       });
@@ -1013,28 +1019,37 @@ export class QuotationTemplateService {
       unit: "Set"
     });
 
-    // 7. DC Cable - Qty: 20m (40m if inverter >10 kW)
-    const dcCableQty = parseFloat(inverterKVA) > 10 ? 40 : 20;
+    // 7. DC Cable - Sized safely by capacity
+    const invRatingNum = parseFloat(inverterKVA) || 0;
+    const dcCableRating = invRatingNum > 50 ? "16 SQ.MM" : invRatingNum > 20 ? "6 SQ.MM" : "4 SQ.MM";
+    const dcCableQty = invRatingNum > 50 ? 100 : invRatingNum > 10 ? 50 : 25;
     items.push({
       slNo: slNo++,
       description: "DC CABLE",
       type: "DC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: "1000V",
+      rating: dcCableRating,
+      make: "Mardia/Polycab/Siechem",
       qty: dcCableQty,
       unit: "Mtr"
     });
 
-    // 8. AC Cable - Qty: 15m (30m if inverter >10 kW)
-    const acCableQty = parseFloat(inverterKVA) > 10 ? 30 : 15;
+    // 8. AC Cable - Scaled strictly by AC ampacity
+    const acCableRating = invRatingNum > 60 ? "70 SQ.MM (4C XLPE)"
+      : invRatingNum > 35 ? "35 SQ.MM (4C XLPE)"
+      : invRatingNum > 20 ? "25 SQ.MM (4C XLPE)"
+      : invRatingNum > 10 ? "16 SQ.MM (4C)"
+      : invRatingNum > 5 ? "6 SQ.MM"
+      : "4 SQ.MM";
+
+    const acCableQty = invRatingNum > 50 ? 80 : invRatingNum > 10 ? 40 : 20;
     items.push({
       slNo: slNo++,
       description: "AC CABLE",
       type: "AC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: inverterVoltage,
+      rating: acCableRating,
+      make: "Polycab/Havells/KEI",
       qty: acCableQty,
       unit: "Mtr"
     });
@@ -1266,28 +1281,37 @@ export class QuotationTemplateService {
       unit: "Set"
     });
 
-    // 7. DC Cable - Qty: 20m (40m if inverter >10 kW)
-    const dcCableQty = parseFloat(inverterKVA) > 10 ? 40 : 20;
+    // 7. DC Cable - Sized safely by capacity
+    const invRatingNum = parseFloat(inverterKVA) || 0;
+    const dcCableRating = invRatingNum > 50 ? "16 SQ.MM" : invRatingNum > 20 ? "6 SQ.MM" : "4 SQ.MM";
+    const dcCableQty = invRatingNum > 50 ? 100 : invRatingNum > 10 ? 50 : 25;
     items.push({
       slNo: slNo++,
       description: "DC CABLE",
       type: "DC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: "1000V",
+      rating: dcCableRating,
+      make: "Mardia/Polycab/Siechem",
       qty: dcCableQty,
       unit: "Mtr"
     });
 
-    // 8. AC Cable - Qty: 15m (30m if inverter >10 kW)
-    const acCableQty = parseFloat(inverterKVA) > 10 ? 30 : 15;
+    // 8. AC Cable - Scaled strictly by AC ampacity
+    const acCableRating = invRatingNum > 60 ? "70 SQ.MM (4C XLPE)"
+      : invRatingNum > 35 ? "35 SQ.MM (4C XLPE)"
+      : invRatingNum > 20 ? "25 SQ.MM (4C XLPE)"
+      : invRatingNum > 10 ? "16 SQ.MM (4C)"
+      : invRatingNum > 5 ? "6 SQ.MM"
+      : "4 SQ.MM";
+
+    const acCableQty = invRatingNum > 50 ? 80 : invRatingNum > 10 ? 40 : 20;
     items.push({
       slNo: slNo++,
       description: "AC CABLE",
       type: "AC",
-      volt: "NA",
-      rating: "4 SQ.MM",
-      make: "Mardia/Polycab",
+      volt: inverterVoltage,
+      rating: acCableRating,
+      make: "Polycab/Havells/KEI",
       qty: acCableQty,
       unit: "Mtr"
     });

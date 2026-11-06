@@ -1046,6 +1046,12 @@ export interface IStorage {
     data: Partial<z.infer<typeof insertInvoiceSchema>>,
   ): Promise<Invoice>;
   deleteInvoice(id: string): Promise<void>;
+  // Products & Inventory
+  listProducts(filters?: any): Promise<{ products: any[]; total: number }>;
+  getProduct(id: string): Promise<any | undefined>;
+  createProduct(data: any): Promise<any>;
+  updateProduct(id: string, data: any): Promise<any>;
+  deleteProduct(id: string): Promise<void>;
   createAttendance(
     data: z.infer<typeof insertAttendanceSchema>,
   ): Promise<Attendance>;
@@ -4435,8 +4441,20 @@ export class FirestoreStorage implements IStorage {
         return startDate <= currentDate;
       })
       .reduce((total, advance) => {
-        // Calculate remaining amount logic if needed, but for now we take the monthly deduction
-        return total + (advance.monthlyDeduction || 0);
+        const totalLoan = Number(advance.amount) || 0;
+        const monthly = Number(advance.monthlyDeduction) || 0;
+        if (totalLoan <= 0 || monthly <= 0) return total;
+
+        // Calculate how many months have elapsed since deductions started
+        const monthsElapsed = Math.max(0, (year - advance.deductionStartYear) * 12 + (month - advance.deductionStartMonth));
+        const priorDeductions = advance.repaidAmount !== undefined 
+          ? Number(advance.repaidAmount) 
+          : Math.min(totalLoan, monthsElapsed * monthly);
+
+        const remainingBalance = Math.max(0, totalLoan - priorDeductions);
+        const currentMonthDeduction = Math.min(remainingBalance, monthly);
+
+        return total + currentMonthDeduction;
       }, 0);
 
     const totalDeductions = pfDeduction + esiDeduction + tdsDeduction + advanceDeduction;
@@ -4499,11 +4517,25 @@ export class FirestoreStorage implements IStorage {
       }
     }
 
-    // FIXED: Exclude records pending review (Payroll Blocked until approved)
-    const validRecords = attendanceRecords.filter(r => r.adminReviewStatus !== 'pending');
+    // Include records with valid check-in and checkout (even if auto-corrected pending review)
+    // Deduct only if explicitly rejected or completely absent
+    const validRecords = attendanceRecords.filter(r => r.adminReviewStatus !== 'rejected');
 
-    const presentDays = validRecords.filter(r => r.status === 'present' || r.status === 'late').length;
-    const absentDays = workingDays - presentDays;
+    let presentDays = 0;
+    validRecords.forEach(r => {
+      if (r.status === 'half_day') {
+        presentDays += 0.5;
+      } else if (['present', 'late', 'overtime', 'early_checkout'].includes(r.status)) {
+        presentDays += 1.0;
+      } else if (r.checkInTime && r.checkOutTime && (Number(r.workingHours) || 0) >= 7) {
+        // Fallback for auto-checked out records pending review
+        presentDays += 1.0;
+      } else if (r.checkInTime && r.checkOutTime && (Number(r.workingHours) || 0) >= 4) {
+        presentDays += 0.5;
+      }
+    });
+
+    const absentDays = Math.max(0, workingDays - Math.floor(presentDays));
     const overtimeHours = validRecords.reduce((total, r) => total + (r.overtimeHours || 0), 0);
     const leaveDays = validRecords.filter(r => r.status === 'leave').length;
 
@@ -6181,4 +6213,9 @@ export class FirestoreStorage implements IStorage {
   }
 }
 
-export const storage = new FirestoreStorage();
+// Export the active PostgreSQL storage engine powered by Neon & Drizzle
+import { PostgresStorage } from "./storage-postgres";
+const firestoreStorage = new FirestoreStorage();
+export const storage = new PostgresStorage(firestoreStorage);
+
+

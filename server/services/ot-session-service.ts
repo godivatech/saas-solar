@@ -162,21 +162,24 @@ export class OTSessionService {
             // IMPORTANT: Do NOT mark as 'present' - this is OT-only (no regular check-in yet)
             if (!attendance) {
                 console.log('[OT-SESSION] No attendance found - auto-creating for early arrival/weekend OT');
+                const isWeekendDay = today.getDay() === 0; // Sunday or configured weekly off
+                const initialStatus = isWeekendDay ? ('overtime' as const) : ('absent' as const);
+
                 const newAttendanceData = {
                     userId,
                     date: today,
                     attendanceType: 'office' as const,
-                    status: 'absent' as const, // ✅ FIX: Not 'present' - will update on actual check-in
+                    status: initialStatus,
+                    isWeeklyOff: isWeekendDay,
                     isLate: false,
                     isWithinOfficeRadius: true,
                     isManualOT: true,
-                    // ✅ REMOVED: otStatus (legacy field) - use otSessions[] array instead
                     autoCorrected: false,
                     otSessions: [] // Initialize empty OT sessions array
                 };
 
                 attendance = await storage.createAttendance(newAttendanceData);
-                console.log('[OT-SESSION] Attendance auto-created with OT-only status (no check-in)');
+                console.log(`[OT-SESSION] Attendance auto-created with status: ${initialStatus}`);
             }
 
             const currentCount = attendance.otSessions?.length || 0;
