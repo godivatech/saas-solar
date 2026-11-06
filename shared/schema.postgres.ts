@@ -190,8 +190,10 @@ export const payments = pgTable("payments", {
   tenantId: varchar("tenant_id", { length: 128 }).references(() => tenants.id, { onDelete: "restrict" }),
   invoiceId: varchar("invoice_id", { length: 128 }).references(() => invoices.id, { onDelete: "cascade" }),
   customerId: varchar("customer_id", { length: 128 }).references(() => customers.id, { onDelete: "restrict" }),
+  receiptNumber: varchar("receipt_number", { length: 100 }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  paymentMethod: varchar("payment_method", { length: 50 }).notNull(), // cash, bank_transfer, upi, cheque
+  paymentMethod: varchar("payment_method", { length: 50 }).default("bank_transfer"), // cash, bank_transfer, upi, cheque
+  paymentMode: varchar("payment_mode", { length: 50 }),
   referenceNumber: varchar("reference_number", { length: 100 }),
   status: varchar("status", { length: 50 }).default("completed").notNull(),
   paymentDate: timestamp("payment_date", { withTimezone: true }).defaultNow().notNull(),

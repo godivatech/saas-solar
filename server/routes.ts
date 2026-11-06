@@ -138,6 +138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Load user profile from storage
       const userProfile = await storage.getUser(decodedToken.uid);
 
+      // Multi-tenancy context isolation: attach tenantId to request context
+      req.tenantId = (decodedToken as any).tenant_id || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+
 
       if (userProfile) {
         // Attach enhanced user data for permission checking
@@ -4283,6 +4286,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting invoice:", error);
       res.status(500).json({ message: "Failed to delete invoice" });
+    }
+  });
+
+  // Atomic ACID payment processing endpoint
+  app.post("/api/invoices/:id/payments", verifyAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || !["master_admin", "admin", "accounts"].includes(user.role || user.department || "")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const { amount, paymentMethod, referenceNumber, notes } = req.body;
+      if (!amount || Number(amount) <= 0) {
+        return res.status(400).json({ message: "Valid payment amount is required" });
+      }
+      if (!paymentMethod) {
+        return res.status(400).json({ message: "Payment method is required" });
+      }
+
+      const result = await (storage as any).recordInvoicePayment({
+        invoiceId: req.params.id,
+        amount: Number(amount),
+        paymentMethod,
+        referenceNumber,
+        receivedBy: user.displayName || user.email || user.id,
+        notes
+      });
+
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Error recording invoice payment:", error);
+      res.status(500).json({ message: (error as Error).message || "Failed to record payment" });
+    }
+  });
+
+  app.get("/api/invoices/:id/payments", verifyAuth, async (req, res) => {
+    try {
+      const payments = await (storage as any).listPaymentsByInvoice(req.params.id);
+      res.json(payments);
+    } catch (error) {
+      console.error("Error fetching invoice payments:", error);
+      res.status(500).json({ message: "Failed to fetch payments" });
     }
   });
 

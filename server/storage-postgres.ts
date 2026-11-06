@@ -204,26 +204,24 @@ export class PostgresStorage implements IStorage {
   async listUsers(): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).orderBy(desc(pgUsers.createdAt));
-      if (rows.length > 0) {
-        return rows.map(u => ({
-          id: u.id,
-          uid: u.firebaseUid,
-          email: u.email,
-          displayName: u.displayName,
-          role: u.role as any,
-          department: u.department as any,
-          designation: u.designation as any,
-          employeeId: u.employeeId || undefined,
-          isActive: u.isActive,
-          employeeStatus: u.employeeStatus as any,
-          permissions: (u.permissions as string[]) || [],
-          createdAt: u.createdAt
-        }));
-      }
+      return rows.map(u => ({
+        id: u.id,
+        uid: u.firebaseUid,
+        email: u.email,
+        displayName: u.displayName,
+        role: u.role as any,
+        department: u.department as any,
+        designation: u.designation as any,
+        employeeId: u.employeeId || undefined,
+        isActive: u.isActive,
+        employeeStatus: u.employeeStatus as any,
+        permissions: (u.permissions as string[]) || [],
+        createdAt: u.createdAt
+      }));
     } catch (e) {
       console.error("[PostgresStorage] listUsers error, delegating:", e);
+      return (this.fallback as any).listUsers ? (this.fallback as any).listUsers() : [];
     }
-    return (this.fallback as any).listUsers ? (this.fallback as any).listUsers() : [];
   }
 
   async createUser(data: any): Promise<User> {
@@ -311,51 +309,51 @@ export class PostgresStorage implements IStorage {
   async getUsersByDepartment(department: string): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.department, department.toLowerCase()));
-      if (rows.length > 0) return rows.map(r => this.mapUser(r));
+      return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByDepartment error:", e);
+      return this.fallback.getUsersByDepartment(department);
     }
-    return this.fallback.getUsersByDepartment(department);
   }
 
   async getUsersByDesignation(designation: string): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.designation, designation));
-      if (rows.length > 0) return rows.map(r => this.mapUser(r));
+      return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByDesignation error:", e);
+      return this.fallback.getUsersByDesignation(designation);
     }
-    return this.fallback.getUsersByDesignation(designation);
   }
 
   async getUsersByReportingManager(managerId: string): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.reportingManagerId, managerId));
-      if (rows.length > 0) return rows.map(r => this.mapUser(r));
+      return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByReportingManager error:", e);
+      return this.fallback.getUsersByReportingManager(managerId);
     }
-    return this.fallback.getUsersByReportingManager(managerId);
   }
 
   async getUsersByRole(role: string): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.role, role));
-      if (rows.length > 0) return rows.map(r => this.mapUser(r));
+      return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByRole error:", e);
+      return this.fallback.getUsersByRole(role);
     }
-    return this.fallback.getUsersByRole(role);
   }
 
   async listDepartments(): Promise<string[]> {
     try {
       const rows = await pgDb.select({ department: pgDepartmentTimings.department }).from(pgDepartmentTimings);
-      if (rows.length > 0) return rows.map(r => r.department);
+      return rows.map(r => r.department);
     } catch (e) {
       console.error("[PostgresStorage] listDepartments error:", e);
+      return this.fallback.listDepartments();
     }
-    return this.fallback.listDepartments();
   }
 
   async getEffectiveUserPermissions(userId: string): Promise<string[]> {
@@ -431,30 +429,28 @@ export class PostgresStorage implements IStorage {
         .where(eq(pgCustomers.isDeleted, false))
         .orderBy(desc(pgCustomers.createdAt));
 
-      if (rows.length > 0) {
-        return rows.map(c => ({
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile,
-          email: c.email || undefined,
-          address: c.address || undefined,
-          city: c.city || undefined,
-          state: c.state || undefined,
-          pincode: c.pincode || undefined,
-          ebServiceNumber: c.ebServiceNumber || undefined,
-          tariffCode: c.tariffCode || undefined,
-          ebSanctionPhase: c.ebSanctionPhase as any,
-          ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-          propertyType: c.propertyType as any,
-          scope: c.scope || undefined,
-          status: c.status || "lead",
-          createdAt: c.createdAt
-        }));
-      }
+      return rows.map(c => ({
+        id: c.id,
+        name: c.name,
+        mobile: c.mobile,
+        email: c.email || undefined,
+        address: c.address || undefined,
+        city: c.city || undefined,
+        state: c.state || undefined,
+        pincode: c.pincode || undefined,
+        ebServiceNumber: c.ebServiceNumber || undefined,
+        tariffCode: c.tariffCode || undefined,
+        ebSanctionPhase: c.ebSanctionPhase as any,
+        ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
+        propertyType: c.propertyType as any,
+        scope: c.scope || undefined,
+        status: c.status || "lead",
+        createdAt: c.createdAt
+      }));
     } catch (e) {
       console.error("[PostgresStorage] listCustomers error, delegating:", e);
+      return this.fallback.listCustomers();
     }
-    return this.fallback.listCustomers();
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
@@ -650,22 +646,20 @@ export class PostgresStorage implements IStorage {
         .orderBy(desc(pgActivityLogs.createdAt))
         .limit(limit);
 
-      if (rows.length > 0) {
-        return rows.map(r => ({
-          id: r.id,
-          type: r.type as any,
-          title: r.title,
-          description: r.description,
-          entityId: r.entityId || '',
-          entityType: r.entityType || '',
-          userId: r.userId || '',
-          createdAt: r.createdAt
-        }));
-      }
+      return rows.map(r => ({
+        id: r.id,
+        type: r.type as any,
+        title: r.title,
+        description: r.description,
+        entityId: r.entityId || '',
+        entityType: r.entityType || '',
+        userId: r.userId || '',
+        createdAt: r.createdAt
+      }));
     } catch (e) {
       console.error("[PostgresStorage] listActivityLogs error, delegating:", e);
+      return this.fallback.listActivityLogs(limit);
     }
-    return this.fallback.listActivityLogs(limit);
   }
 
   async createActivityLog(data: any): Promise<ActivityLog> {
@@ -781,7 +775,7 @@ export class PostgresStorage implements IStorage {
       const tenantId = await this.getTenantId();
       const [created] = await pgDb.insert(pgQuotations).values({
         tenantId,
-        quotationNumber: data.quotationNumber,
+        quotationNumber: data.quotationNumber || `QT-${Date.now().toString().slice(-6)}`,
         revision: data.revision || 0,
         customerId: data.customerId,
         projectType: data.projectType || 'on_grid',
@@ -796,7 +790,7 @@ export class PostgresStorage implements IStorage {
         roundoff: String(data.roundoff || 0),
         status: data.status || 'draft',
         source: data.source || 'manual',
-        preparedBy: data.preparedBy || null,
+        preparedBy: data.preparedBy || 'System',
         projects: data.projects || [],
         customBillOfMaterials: data.customBillOfMaterials || [],
         customerNotes: data.customerNotes || null,
@@ -1022,6 +1016,81 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  /**
+   * Atomic ACID Financial Transaction: Records an invoice payment and recalculates invoice balance and status
+   */
+  async recordInvoicePayment(data: {
+    invoiceId: string;
+    amount: number;
+    paymentMethod: string;
+    referenceNumber?: string;
+    receivedBy?: string;
+    notes?: string;
+  }): Promise<{ payment: any; invoice: Invoice }> {
+    try {
+      return await pgDb.transaction(async (tx) => {
+        const [inv] = await tx.select().from(pgInvoices).where(eq(pgInvoices.id, data.invoiceId)).limit(1);
+        if (!inv) {
+          throw new Error(`Invoice ${data.invoiceId} not found`);
+        }
+
+        const tenantId = inv.tenantId || (await this.getTenantId());
+        const totalAmount = Number(inv.totalAmount);
+        const prevPaid = Number(inv.amountPaid || 0);
+        const newPaid = prevPaid + data.amount;
+        const balanceDue = Math.max(0, totalAmount - newPaid);
+        const newStatus = balanceDue === 0 ? "paid" : "partially_paid";
+        const receiptNumber = `REC-${Date.now().toString().slice(-6)}`;
+
+        const [payment] = await tx.insert(pgPayments).values({
+          tenantId,
+          invoiceId: data.invoiceId,
+          customerId: inv.customerId,
+          receiptNumber,
+          amount: String(data.amount),
+          paymentMethod: data.paymentMethod,
+          paymentMode: data.paymentMethod,
+          referenceNumber: data.referenceNumber || null,
+          receivedBy: data.receivedBy || null,
+          notes: data.notes || null,
+          status: "completed"
+        }).returning();
+
+        const [updatedInv] = await tx.update(pgInvoices).set({
+          amountPaid: String(newPaid),
+          balanceDue: String(balanceDue),
+          status: newStatus,
+          updatedAt: new Date()
+        }).where(eq(pgInvoices.id, data.invoiceId)).returning();
+
+        return {
+          payment,
+          invoice: {
+            id: updatedInv.id,
+            invoiceNumber: updatedInv.invoiceNumber,
+            quotationId: updatedInv.quotationId || '',
+            customerId: updatedInv.customerId,
+            total: Number(updatedInv.totalAmount),
+            status: updatedInv.status,
+            createdAt: updatedInv.createdAt
+          } as Invoice
+        };
+      });
+    } catch (e) {
+      console.error("[PostgresStorage] recordInvoicePayment transaction error:", e);
+      throw e;
+    }
+  }
+
+  async listPaymentsByInvoice(invoiceId: string): Promise<any[]> {
+    try {
+      return await pgDb.select().from(pgPayments).where(eq(pgPayments.invoiceId, invoiceId)).orderBy(desc(pgPayments.paymentDate));
+    } catch (e) {
+      console.error("[PostgresStorage] listPaymentsByInvoice error:", e);
+      return [];
+    }
+  }
+
   // ===================================================================
   // PRODUCTS & INVENTORY
   // ===================================================================
@@ -1173,11 +1242,11 @@ export class PostgresStorage implements IStorage {
         .from(pgAttendance)
         .where(eq(pgAttendance.userId, userId))
         .orderBy(desc(pgAttendance.date));
-      if (rows.length > 0) return rows.map(r => this.mapAttendance(r));
+      return rows.map(r => this.mapAttendance(r));
     } catch (e) {
       console.error("[PostgresStorage] listAttendanceByUser error:", e);
+      return this.fallback.listAttendanceByUser(userId);
     }
-    return this.fallback.listAttendanceByUser(userId);
   }
 
   async listAttendanceByDate(date: Date): Promise<Attendance[]> {
@@ -1193,11 +1262,11 @@ export class PostgresStorage implements IStorage {
         .where(sql`${pgAttendance.date} >= ${start.toISOString()} AND ${pgAttendance.date} <= ${end.toISOString()}`)
         .orderBy(desc(pgAttendance.createdAt));
 
-      if (rows.length > 0) return rows.map(r => this.mapAttendance(r));
+      return rows.map(r => this.mapAttendance(r));
     } catch (e) {
       console.error("[PostgresStorage] listAttendanceByDate error:", e);
+      return this.fallback.listAttendanceByDate(date);
     }
-    return this.fallback.listAttendanceByDate(date);
   }
 
   async createAttendance(data: any): Promise<Attendance> {
@@ -1659,11 +1728,11 @@ export class PostgresStorage implements IStorage {
   async listLeaveApplicationsByUser(userId: string): Promise<LeaveApplication[]> {
     try {
       const rows = await pgDb.select().from(pgLeaveApplications).where(eq(pgLeaveApplications.userId, userId)).orderBy(desc(pgLeaveApplications.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapLeaveApp(r));
+      return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByUser error:", e);
+      return this.fallback.listLeaveApplicationsByUser(userId);
     }
-    return this.fallback.listLeaveApplicationsByUser(userId);
   }
 
   async listLeaveApplicationsByManager(managerId: string, status?: string): Promise<LeaveApplication[]> {
@@ -1672,11 +1741,11 @@ export class PostgresStorage implements IStorage {
       const rows = status
         ? await query.where(eq(pgLeaveApplications.status, status)).orderBy(desc(pgLeaveApplications.createdAt))
         : await query.orderBy(desc(pgLeaveApplications.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapLeaveApp(r));
+      return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByManager error:", e);
+      return this.fallback.listLeaveApplicationsByManager(managerId, status);
     }
-    return this.fallback.listLeaveApplicationsByManager(managerId, status);
   }
 
   async listLeaveApplicationsByHR(status?: string): Promise<LeaveApplication[]> {
@@ -1685,21 +1754,21 @@ export class PostgresStorage implements IStorage {
       const rows = status
         ? await query.where(eq(pgLeaveApplications.status, status)).orderBy(desc(pgLeaveApplications.createdAt))
         : await query.orderBy(desc(pgLeaveApplications.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapLeaveApp(r));
+      return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByHR error:", e);
+      return this.fallback.listLeaveApplicationsByHR(status);
     }
-    return this.fallback.listLeaveApplicationsByHR(status);
   }
 
   async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
     try {
       const rows = await pgDb.select().from(pgLeaveApplications).orderBy(desc(pgLeaveApplications.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapLeaveApp(r));
+      return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listAllLeaveApplications error:", e);
+      return this.fallback.listAllLeaveApplications(filters);
     }
-    return this.fallback.listAllLeaveApplications(filters);
   }
 
   async approveLeaveByManager(leaveId: string, managerId: string, remarks?: string): Promise<LeaveApplication> {
@@ -2003,25 +2072,23 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
         rows = await query.orderBy(desc(pgSalaryAdvances.createdAt));
       }
 
-      if (rows.length > 0) {
-        return rows.map(adv => ({
-          id: adv.id,
-          userId: adv.userId,
-          amount: Number(adv.amount),
-          monthlyDeduction: Number(adv.monthlyDeduction),
-          repaidAmount: Number(adv.repaidAmount),
-          deductionStartMonth: adv.deductionStartMonth,
-          deductionStartYear: adv.deductionStartYear,
-          reason: adv.reason || undefined,
-          status: adv.status as any,
-          createdAt: adv.createdAt,
-          updatedAt: adv.updatedAt
-        } as SalaryAdvance));
-      }
+      return rows.map(adv => ({
+        id: adv.id,
+        userId: adv.userId,
+        amount: Number(adv.amount),
+        monthlyDeduction: Number(adv.monthlyDeduction),
+        repaidAmount: Number(adv.repaidAmount),
+        deductionStartMonth: adv.deductionStartMonth,
+        deductionStartYear: adv.deductionStartYear,
+        reason: adv.reason || undefined,
+        status: adv.status as any,
+        createdAt: adv.createdAt,
+        updatedAt: adv.updatedAt
+      } as SalaryAdvance));
     } catch (e) {
       console.error("[PostgresStorage] listSalaryAdvances error:", e);
+      return this.fallback.listSalaryAdvances(filters);
     }
-    return this.fallback.listSalaryAdvances(filters);
   }
 
   private mapPayroll(p: any): Payroll {
@@ -2135,21 +2202,21 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
     try {
       let query = pgDb.select().from(pgPayrolls);
       const rows = await query.orderBy(desc(pgPayrolls.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapPayroll(r));
+      return rows.map(r => this.mapPayroll(r));
     } catch (e) {
       console.error("[PostgresStorage] listPayrolls error:", e);
+      return this.fallback.listPayrolls(filters);
     }
-    return this.fallback.listPayrolls(filters);
   }
 
   async listPayrollsByUser(userId: string): Promise<Payroll[]> {
     try {
       const rows = await pgDb.select().from(pgPayrolls).where(eq(pgPayrolls.userId, userId)).orderBy(desc(pgPayrolls.createdAt));
-      if (rows.length > 0) return rows.map(r => this.mapPayroll(r));
+      return rows.map(r => this.mapPayroll(r));
     } catch (e) {
       console.error("[PostgresStorage] listPayrollsByUser error:", e);
+      return this.fallback.listPayrollsByUser(userId);
     }
-    return this.fallback.listPayrollsByUser(userId);
   }
 
   async getEnhancedPayroll(id: string): Promise<any | undefined> {
@@ -2341,20 +2408,18 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
   async listOfficeLocations(): Promise<OfficeLocation[]> {
     try {
       const rows = await pgDb.select().from(pgOfficeLocations).where(eq(pgOfficeLocations.isActive, true));
-      if (rows.length > 0) {
-        return rows.map(loc => ({
-          id: loc.id,
-          name: loc.name,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          radius: loc.radius,
-          createdAt: loc.createdAt
-        } as OfficeLocation));
-      }
+      return rows.map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        radius: loc.radius,
+        createdAt: loc.createdAt
+      } as OfficeLocation));
     } catch (e) {
       console.error("[PostgresStorage] listOfficeLocations error:", e);
+      return this.fallback.listOfficeLocations();
     }
-    return this.fallback.listOfficeLocations();
   }
 
   async getOfficeLocation(id: string): Promise<OfficeLocation | undefined> {
@@ -2452,22 +2517,20 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
   async listDepartmentTimings(): Promise<any[]> {
     try {
       const rows = await pgDb.select().from(pgDepartmentTimings);
-      if (rows.length > 0) {
-        return rows.map(t => ({
-          id: t.id,
-          department: t.department,
-          checkInTime: t.checkInTime,
-          checkOutTime: t.checkOutTime,
-          workingHours: Number(t.workingHours) || 8.0,
-          autoCheckoutGraceMinutes: t.autoCheckoutGraceMinutes,
-          weekendDays: (t.weekendDays as number[]) || [0],
-          isActive: t.isActive
-        }));
-      }
+      return rows.map(t => ({
+        id: t.id,
+        department: t.department,
+        checkInTime: t.checkInTime,
+        checkOutTime: t.checkOutTime,
+        workingHours: Number(t.workingHours) || 8.0,
+        autoCheckoutGraceMinutes: t.autoCheckoutGraceMinutes,
+        weekendDays: (t.weekendDays as number[]) || [0],
+        isActive: t.isActive
+      }));
     } catch (e) {
       console.error("[PostgresStorage] listDepartmentTimings error:", e);
+      return this.fallback.listDepartmentTimings();
     }
-    return this.fallback.listDepartmentTimings();
   }
 
   async createOfficeLocation(data: any): Promise<OfficeLocation> {
@@ -2962,25 +3025,23 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
         ? await query.where(eq(pgFixedHolidays.year, year)).orderBy(pgFixedHolidays.date)
         : await query.orderBy(pgFixedHolidays.date);
 
-      if (rows.length > 0) {
-        return rows.map(h => ({
-          id: h.id,
-          name: h.name,
-          date: h.date,
-          year: h.year,
-          type: h.type as any,
-          isPaid: h.isPaid ?? true,
-          isOptional: h.isOptional ?? false,
-          applicableDepartments: (h.applicableDepartments as string[]) || [],
-          description: h.description || undefined,
-          createdBy: h.createdBy || undefined,
-          createdAt: h.createdAt
-        } as FixedHoliday));
-      }
+      return rows.map(h => ({
+        id: h.id,
+        name: h.name,
+        date: h.date,
+        year: h.year,
+        type: h.type as any,
+        isPaid: h.isPaid ?? true,
+        isOptional: h.isOptional ?? false,
+        applicableDepartments: (h.applicableDepartments as string[]) || [],
+        description: h.description || undefined,
+        createdBy: h.createdBy || undefined,
+        createdAt: h.createdAt
+      } as FixedHoliday));
     } catch (e) {
       console.error("[PostgresStorage] listFixedHolidays error:", e);
+      return this.fallback.listFixedHolidays(year);
     }
-    return this.fallback.listFixedHolidays(year);
   }
 
   async initializeFixedHolidays(year: number, createdBy: string): Promise<void> {
