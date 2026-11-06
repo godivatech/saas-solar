@@ -21,3 +21,4 @@ async function checkPaymentsTable() {
 }
 
 checkPaymentsTable().catch(console.error);
+

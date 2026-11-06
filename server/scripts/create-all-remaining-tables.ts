@@ -228,3 +228,4 @@ main().catch(err => {
   console.error('❌ Failed creating remaining tables:', err);
   process.exit(1);
 });
+

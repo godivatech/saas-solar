@@ -52,3 +52,4 @@ async function upgradeSiteVisitsTable() {
 }
 
 upgradeSiteVisitsTable().catch(console.error);
+

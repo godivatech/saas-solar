@@ -12,3 +12,4 @@ methods.forEach(m => {
     console.log(lines.slice(lineIdx, lineIdx + 20).join('\n'));
   }
 });
+

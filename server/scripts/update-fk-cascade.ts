@@ -22,3 +22,4 @@ async function updateFkCascade() {
 }
 
 updateFkCascade().catch(console.error);
+

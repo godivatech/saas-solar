@@ -13,3 +13,4 @@ lines.forEach((line, idx) => {
 
 console.log(`Found ${fallthroughMatches.length} occurrences of if (rows.length > 0) fallthrough:`);
 fallthroughMatches.forEach(m => console.log(`- Line ${m.line}: ${m.text}`));
+

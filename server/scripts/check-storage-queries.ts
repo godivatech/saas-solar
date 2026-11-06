@@ -19,3 +19,4 @@ methodsToCheck.forEach(m => {
     console.log(lines.slice(lineIdx, lineIdx + 15).join('\n'));
   }
 });
+

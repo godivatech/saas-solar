@@ -40,3 +40,4 @@ for (const col of Array.from(collections).sort()) {
 }
 
 console.log("\nTotal collections:", collections.size);
+

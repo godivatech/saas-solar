@@ -11,3 +11,4 @@ lineNumbers.forEach(ln => {
   const end = Math.min(lines.length, ln + 12);
   console.log(lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n'));
 });
+

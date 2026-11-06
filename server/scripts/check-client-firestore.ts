@@ -34,3 +34,4 @@ for (const file of clientFiles) {
 
 console.log(`Found ${findings.length} occurrences in client:`);
 findings.forEach(f => console.log(`- ${f.file}:${f.line} -> ${f.text}`));
+

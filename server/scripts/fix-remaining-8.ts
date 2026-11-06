@@ -4,7 +4,7 @@ let content = fs.readFileSync('server/storage-postgres.ts', 'utf-8');
 
 // 1. listUsers
 content = content.replace(
-`  async listUsers(): Promise<User[]> {
+  `  async listUsers(): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).orderBy(desc(pgUsers.createdAt));
       if (rows.length > 0) {
@@ -28,7 +28,7 @@ content = content.replace(
     }
     return (this.fallback as any).listUsers ? (this.fallback as any).listUsers() : [];
   }`,
-`  async listUsers(): Promise<User[]> {
+  `  async listUsers(): Promise<User[]> {
     try {
       const rows = await pgDb.select().from(pgUsers).orderBy(desc(pgUsers.createdAt));
       return rows.map(u => ({
@@ -54,7 +54,7 @@ content = content.replace(
 
 // 2. listAllLeaveApplications
 content = content.replace(
-`  async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
+  `  async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
     try {
       const rows = await pgDb.select().from(pgLeaveApplications).orderBy(desc(pgLeaveApplications.createdAt));
       if (rows.length > 0) return rows.map(r => this.mapLeaveApp(r));
@@ -63,7 +63,7 @@ content = content.replace(
     }
     return this.fallback.listAllLeaveApplications(filters);
   }`,
-`  async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
+  `  async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
     try {
       const rows = await pgDb.select().from(pgLeaveApplications).orderBy(desc(pgLeaveApplications.createdAt));
       return rows.map(r => this.mapLeaveApp(r));
@@ -76,7 +76,7 @@ content = content.replace(
 
 // 3. listSalaryAdvances (around line 2002)
 content = content.replace(
-`      if (rows.length > 0) {
+  `      if (rows.length > 0) {
         return rows.map(adv => ({
           id: adv.id,
           userId: adv.userId,
@@ -102,7 +102,7 @@ content = content.replace(
       console.error("[PostgresStorage] listSalaryAdvances error, delegating:", e);
     }
     return this.fallback.listSalaryAdvances(filters);`,
-`      return rows.map(adv => ({
+  `      return rows.map(adv => ({
         id: adv.id,
         userId: adv.userId,
         amount: Number(adv.amount),
@@ -130,7 +130,7 @@ content = content.replace(
 
 // 4. listPayrolls
 content = content.replace(
-`  async listPayrolls(filters?: any): Promise<Payroll[]> {
+  `  async listPayrolls(filters?: any): Promise<Payroll[]> {
     try {
       let query = pgDb.select().from(pgPayrolls);
       const rows = await query.orderBy(desc(pgPayrolls.createdAt));
@@ -140,7 +140,7 @@ content = content.replace(
     }
     return this.fallback.listPayrolls(filters);
   }`,
-`  async listPayrolls(filters?: any): Promise<Payroll[]> {
+  `  async listPayrolls(filters?: any): Promise<Payroll[]> {
     try {
       let query = pgDb.select().from(pgPayrolls);
       const rows = await query.orderBy(desc(pgPayrolls.createdAt));
@@ -154,7 +154,7 @@ content = content.replace(
 
 // 5. listDepartmentTimings
 content = content.replace(
-`  async listDepartmentTimings(): Promise<any[]> {
+  `  async listDepartmentTimings(): Promise<any[]> {
     try {
       const rows = await pgDb.select().from(pgDepartmentTimings);
       if (rows.length > 0) {
@@ -174,7 +174,7 @@ content = content.replace(
     }
     return this.fallback.listDepartmentTimings();
   }`,
-`  async listDepartmentTimings(): Promise<any[]> {
+  `  async listDepartmentTimings(): Promise<any[]> {
     try {
       const rows = await pgDb.select().from(pgDepartmentTimings);
       return rows.map(t => ({
@@ -196,7 +196,7 @@ content = content.replace(
 
 // 6. listFixedHolidays
 content = content.replace(
-`      if (rows.length > 0) {
+  `      if (rows.length > 0) {
         return rows.map(h => ({
           id: h.id,
           name: h.name,
@@ -215,7 +215,7 @@ content = content.replace(
       console.error("[PostgresStorage] listFixedHolidays error:", e);
     }
     return this.fallback.listFixedHolidays(year);`,
-`      return rows.map(h => ({
+  `      return rows.map(h => ({
         id: h.id,
         name: h.name,
         date: h.date,
@@ -236,7 +236,7 @@ content = content.replace(
 
 // 7. listDesignations
 content = content.replace(
-`      if (rows.length > 0) {
+  `      if (rows.length > 0) {
         return rows.map(des => ({
           id: des.id,
           name: des.name as any,
@@ -250,7 +250,7 @@ content = content.replace(
       console.error("[PostgresStorage] listDesignations error:", e);
     }
     return (this.fallback as any).listDesignations ? (this.fallback as any).listDesignations() : [];`,
-`      return rows.map(des => ({
+  `      return rows.map(des => ({
         id: des.id,
         name: des.name as any,
         level: des.level,
@@ -266,7 +266,7 @@ content = content.replace(
 
 // 8. listRoles
 content = content.replace(
-`      if (rows.length > 0) {
+  `      if (rows.length > 0) {
         return rows.map(r => ({
           id: r.id,
           name: r.name,
@@ -284,7 +284,7 @@ content = content.replace(
       console.error("[PostgresStorage] listRoles error:", e);
     }
     return (this.fallback as any).listRoles ? (this.fallback as any).listRoles() : [];`,
-`      return rows.map(r => ({
+  `      return rows.map(r => ({
         id: r.id,
         name: r.name,
         description: r.description || undefined,
@@ -304,3 +304,4 @@ content = content.replace(
 
 fs.writeFileSync('server/storage-postgres.ts', content, 'utf-8');
 console.log("Successfully fixed remaining 8 methods!");
+

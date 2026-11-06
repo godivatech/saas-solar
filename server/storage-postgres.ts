@@ -1180,6 +1180,7 @@ export class PostgresStorage implements IStorage {
     return {
       id: att.id,
       userId: att.userId,
+      userDepartment: att.userDepartment || null,
       date: att.date,
       checkInTime: att.checkInTime || undefined,
       checkOutTime: att.checkOutTime || undefined,
@@ -1276,6 +1277,7 @@ export class PostgresStorage implements IStorage {
       const [row] = await pgDb.insert(pgAttendance).values({
         tenantId,
         userId: data.userId,
+        userDepartment: data.userDepartment || null,
         date: attDate,
         checkInTime: data.checkInTime ? new Date(data.checkInTime) : null,
         checkOutTime: data.checkOutTime ? new Date(data.checkOutTime) : null,
@@ -1289,7 +1291,8 @@ export class PostgresStorage implements IStorage {
         isWeeklyOff: Boolean(data.isWeeklyOff),
         isHoliday: Boolean(data.isHoliday),
         adminReviewStatus: data.adminReviewStatus || 'approved',
-        remarks: data.remarks || null
+        remarks: data.remarks || null,
+        otSessions: Array.isArray(data.otSessions) ? data.otSessions : []
       }).returning();
 
       try { await this.fallback.createAttendance(data); } catch (_) {}
@@ -1303,13 +1306,21 @@ export class PostgresStorage implements IStorage {
   async updateAttendance(id: string, data: any): Promise<Attendance> {
     try {
       const updateValues: any = { updatedAt: new Date() };
-      if (data.checkOutTime !== undefined) updateValues.checkOutTime = new Date(data.checkOutTime);
+      if (data.checkInTime !== undefined) updateValues.checkInTime = data.checkInTime ? new Date(data.checkInTime) : null;
+      if (data.checkOutTime !== undefined) updateValues.checkOutTime = data.checkOutTime ? new Date(data.checkOutTime) : null;
+      if (data.userDepartment !== undefined) updateValues.userDepartment = data.userDepartment;
+      if (data.attendanceType !== undefined) updateValues.attendanceType = data.attendanceType;
       if (data.workingHours !== undefined) updateValues.workingHours = String(data.workingHours);
       if (data.overtimeHours !== undefined) updateValues.overtimeHours = String(data.overtimeHours);
       if (data.status !== undefined) updateValues.status = data.status;
+      if (data.isLate !== undefined) updateValues.isLate = Boolean(data.isLate);
+      if (data.lateMinutes !== undefined) updateValues.lateMinutes = Number(data.lateMinutes);
       if (data.autoCorrected !== undefined) updateValues.autoCorrected = data.autoCorrected;
       if (data.autoCorrectionReason !== undefined) updateValues.autoCorrectionReason = data.autoCorrectionReason;
+      if (data.autoCorrectedAt !== undefined) updateValues.autoCorrectedAt = data.autoCorrectedAt ? new Date(data.autoCorrectedAt) : null;
       if (data.adminReviewStatus !== undefined) updateValues.adminReviewStatus = data.adminReviewStatus;
+      if (data.remarks !== undefined) updateValues.remarks = data.remarks;
+      if (data.otSessions !== undefined) updateValues.otSessions = Array.isArray(data.otSessions) ? data.otSessions : [];
 
       const [updated] = await pgDb.update(pgAttendance).set(updateValues).where(eq(pgAttendance.id, id)).returning();
       try { await this.fallback.updateAttendance(id, data); } catch (_) {}
@@ -1689,20 +1700,37 @@ export class PostgresStorage implements IStorage {
   async createLeaveApplication(data: any): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      const totalDaysVal = data.totalDays !== undefined && data.totalDays !== null ? String(data.totalDays) : null;
+      const daysCountVal = data.daysCount !== undefined && data.daysCount !== null ? String(data.daysCount) : totalDaysVal;
+
       const [app] = await pgDb.insert(pgLeaveApplications).values({
         tenantId,
         userId: data.userId,
         leaveType: data.leaveType,
         startDate: data.startDate ? new Date(data.startDate) : null,
         endDate: data.endDate ? new Date(data.endDate) : null,
-        totalDays: data.totalDays || null,
+        totalDays: totalDaysVal as any,
+        daysCount: daysCountVal as any,
         permissionDate: data.permissionDate ? new Date(data.permissionDate) : null,
-        permissionHours: data.permissionHours || null,
+        permissionHours: data.permissionHours ? Number(data.permissionHours) : null,
         reason: data.reason,
         status: data.status || "pending_manager"
       }).returning();
 
-      try { await this.fallback.createLeaveApplication(data); } catch (_) {}
+      // Safely enrich fallback payload to satisfy strict Firestore Zod schemas
+      let fallbackData = data;
+      if (!data.employeeId || !data.userName || !data.userDepartment) {
+        const user = await this.getUser(data.userId);
+        fallbackData = {
+          ...data,
+          employeeId: data.employeeId || user?.employeeId || data.userId,
+          userName: data.userName || user?.displayName || "Employee",
+          userDepartment: data.userDepartment || user?.department || "operations",
+          userDesignation: data.userDesignation || user?.designation || "technician",
+          reportingManagerId: data.reportingManagerId || user?.reportingManagerId || data.userId
+        };
+      }
+      try { await this.fallback.createLeaveApplication(fallbackData); } catch (_) {}
       return this.mapLeaveApp(app);
     } catch (e) {
       console.error("[PostgresStorage] createLeaveApplication error:", e);
@@ -1788,11 +1816,111 @@ export class PostgresStorage implements IStorage {
 
   async approveLeaveByHR(leaveId: string, hrId: string, remarks?: string): Promise<LeaveApplication> {
     try {
-      const [updated] = await pgDb
-        .update(pgLeaveApplications)
-        .set({ status: "approved", approvedBy: hrId, updatedAt: new Date() })
-        .where(eq(pgLeaveApplications.id, leaveId))
-        .returning();
+      const updated = await pgDb.transaction(async (tx) => {
+        // 1. Fetch leave application
+        const [leave] = await tx
+          .select()
+          .from(pgLeaveApplications)
+          .where(eq(pgLeaveApplications.id, leaveId))
+          .limit(1);
+
+        if (!leave) throw new Error("Leave application not found");
+
+        // 2. Mark approved
+        const [app] = await tx
+          .update(pgLeaveApplications)
+          .set({
+            status: "approved",
+            approvedBy: hrId,
+            hrApprovalStatus: "approved",
+            hrRemarks: remarks || null,
+            reviewedAt: new Date(),
+            reviewedBy: hrId,
+            updatedAt: new Date()
+          })
+          .where(eq(pgLeaveApplications.id, leaveId))
+          .returning();
+
+        // 3. Atomically update leave balance
+        const targetDate = new Date(leave.startDate || leave.permissionDate || leave.appliedAt || new Date());
+        const year = targetDate.getFullYear();
+        const month = targetDate.getMonth() + 1;
+
+        if (leave.leaveType === "casual_leave") {
+          const daysToDeduct = Number(leave.totalDays || leave.daysCount || 1);
+          const [balance] = await tx
+            .select()
+            .from(pgLeaveBalances)
+            .where(
+              and(
+                eq(pgLeaveBalances.userId, leave.userId),
+                eq(pgLeaveBalances.year, year),
+                eq(pgLeaveBalances.month, month)
+              )
+            )
+            .limit(1);
+
+          if (balance) {
+            await tx
+              .update(pgLeaveBalances)
+              .set({
+                casualLeaveUsed: sql`${pgLeaveBalances.casualLeaveUsed} + ${daysToDeduct}`,
+                updatedAt: new Date()
+              })
+              .where(eq(pgLeaveBalances.id, balance.id));
+          } else {
+            const tenantId = leave.tenantId || (await this.getTenantId());
+            await tx.insert(pgLeaveBalances).values({
+              tenantId,
+              userId: leave.userId,
+              year,
+              month,
+              casualLeaveBalance: "1.00",
+              casualLeaveUsed: String(daysToDeduct),
+              permissionHoursBalance: "2.00",
+              permissionHoursUsed: "0.00"
+            });
+          }
+        } else if (leave.leaveType === "permission") {
+          const hoursToDeduct = Number(leave.permissionHours || 2);
+          const [balance] = await tx
+            .select()
+            .from(pgLeaveBalances)
+            .where(
+              and(
+                eq(pgLeaveBalances.userId, leave.userId),
+                eq(pgLeaveBalances.year, year),
+                eq(pgLeaveBalances.month, month)
+              )
+            )
+            .limit(1);
+
+          if (balance) {
+            await tx
+              .update(pgLeaveBalances)
+              .set({
+                permissionHoursUsed: sql`${pgLeaveBalances.permissionHoursUsed} + ${hoursToDeduct}`,
+                updatedAt: new Date()
+              })
+              .where(eq(pgLeaveBalances.id, balance.id));
+          } else {
+            const tenantId = leave.tenantId || (await this.getTenantId());
+            await tx.insert(pgLeaveBalances).values({
+              tenantId,
+              userId: leave.userId,
+              year,
+              month,
+              casualLeaveBalance: "1.00",
+              casualLeaveUsed: "0.00",
+              permissionHoursBalance: "2.00",
+              permissionHoursUsed: String(hoursToDeduct)
+            });
+          }
+        }
+
+        return app;
+      });
+
       try { await this.fallback.approveLeaveByHR(leaveId, hrId, remarks); } catch (_) {}
       if (updated) return this.mapLeaveApp(updated);
     } catch (e) {
@@ -1818,11 +1946,64 @@ export class PostgresStorage implements IStorage {
 
   async cancelLeaveApplication(leaveId: string, userId: string): Promise<LeaveApplication> {
     try {
-      const [updated] = await pgDb
-        .update(pgLeaveApplications)
-        .set({ status: "cancelled", updatedAt: new Date() })
-        .where(eq(pgLeaveApplications.id, leaveId))
-        .returning();
+      const updated = await pgDb.transaction(async (tx) => {
+        const [leave] = await tx
+          .select()
+          .from(pgLeaveApplications)
+          .where(eq(pgLeaveApplications.id, leaveId))
+          .limit(1);
+
+        if (!leave) throw new Error("Leave application not found");
+        const wasApproved = leave.status === "approved";
+
+        const [app] = await tx
+          .update(pgLeaveApplications)
+          .set({ status: "cancelled", updatedAt: new Date() })
+          .where(eq(pgLeaveApplications.id, leaveId))
+          .returning();
+
+        // If it was already approved, restore the deducted leave balance
+        if (wasApproved) {
+          const targetDate = new Date(leave.startDate || leave.permissionDate || leave.appliedAt || new Date());
+          const year = targetDate.getFullYear();
+          const month = targetDate.getMonth() + 1;
+
+          if (leave.leaveType === "casual_leave") {
+            const daysToRestore = Number(leave.totalDays || leave.daysCount || 1);
+            await tx
+              .update(pgLeaveBalances)
+              .set({
+                casualLeaveUsed: sql`GREATEST(0, ${pgLeaveBalances.casualLeaveUsed} - ${daysToRestore})`,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(pgLeaveBalances.userId, leave.userId),
+                  eq(pgLeaveBalances.year, year),
+                  eq(pgLeaveBalances.month, month)
+                )
+              );
+          } else if (leave.leaveType === "permission") {
+            const hoursToRestore = Number(leave.permissionHours || 2);
+            await tx
+              .update(pgLeaveBalances)
+              .set({
+                permissionHoursUsed: sql`GREATEST(0, ${pgLeaveBalances.permissionHoursUsed} - ${hoursToRestore})`,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(pgLeaveBalances.userId, leave.userId),
+                  eq(pgLeaveBalances.year, year),
+                  eq(pgLeaveBalances.month, month)
+                )
+              );
+          }
+        }
+
+        return app;
+      });
+
       try { await this.fallback.cancelLeaveApplication(leaveId, userId); } catch (_) {}
       if (updated) return this.mapLeaveApp(updated);
     } catch (e) {
@@ -1956,12 +2137,47 @@ async getLeave(id: string): Promise<any | undefined> {
     }
   }
 
-async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
+  private mapSalaryAdvance(adv: any): SalaryAdvance {
+    const amount = Number(adv.amount || adv.requestAmount || 0);
+    const repaidAmount = Number(adv.repaidAmount || 0);
+    const remainingAmount = adv.remainingBalance !== null && adv.remainingBalance !== undefined
+      ? Number(adv.remainingBalance)
+      : Math.max(0, amount - repaidAmount);
+    const monthlyDeduction = Number(adv.monthlyDeduction || adv.monthlyEmiAmount || 0);
+    const numberOfInstallments = Number(adv.emiCount) || (monthlyDeduction > 0 ? Math.ceil(amount / monthlyDeduction) : 1);
+
+    return {
+      id: adv.id,
+      userId: adv.userId,
+      employeeId: adv.userId,
+      amount,
+      reason: adv.reason || "General advance",
+      requestDate: adv.createdAt || new Date(),
+      approvedDate: adv.approvalDate || undefined,
+      deductionStartMonth: Number(adv.deductionStartMonth) || 1,
+      deductionStartYear: Number(adv.deductionStartYear) || new Date().getFullYear(),
+      numberOfInstallments,
+      monthlyDeduction,
+      remainingAmount,
+      remainingBalance: remainingAmount,
+      monthlyEmiAmount: monthlyDeduction,
+      emiCount: numberOfInstallments,
+      status: adv.status as any,
+      approvedBy: adv.approvedBy || undefined,
+      remarks: adv.remarks || undefined,
+      createdAt: adv.createdAt || new Date(),
+      updatedAt: adv.updatedAt || new Date()
+    } as any;
+  }
+
+  async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
     try {
       const tenantId = await this.getTenantId();
       const now = new Date();
       const amountVal = String(data.amount || data.requestAmount || 0);
       const monthlyDeduct = String(data.monthlyDeduction || data.monthlyEmiAmount || 0);
+      const emiCount = Number(data.numberOfInstallments || data.emiCount) || 
+        (Number(monthlyDeduct) > 0 ? Math.ceil(Number(amountVal) / Number(monthlyDeduct)) : 1);
       const startMonth = Number(data.deductionStartMonth) || (now.getMonth() + 1);
       const startYear = Number(data.deductionStartYear) || now.getFullYear();
 
@@ -1969,35 +2185,20 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
         tenantId,
         userId: data.userId,
         amount: amountVal,
+        requestAmount: amountVal,
         monthlyDeduction: monthlyDeduct,
+        monthlyEmiAmount: monthlyDeduct,
+        emiCount,
         repaidAmount: "0",
+        remainingBalance: amountVal,
         deductionStartMonth: startMonth,
         deductionStartYear: startYear,
-        requestAmount: amountVal,
-        remainingBalance: amountVal,
         reason: data.reason || "General advance",
         status: data.status || "pending"
       }).returning();
 
       try { await this.fallback.createSalaryAdvance(data); } catch (_) {}
-
-      return {
-        id: adv.id,
-        userId: adv.userId,
-        employeeId: adv.userId,
-        amount: Number(adv.amount),
-        monthlyDeduction: Number(adv.monthlyDeduction),
-        repaidAmount: Number(adv.repaidAmount),
-        remainingAmount: Number(adv.remainingBalance || adv.amount),
-        deductionStartMonth: adv.deductionStartMonth,
-        deductionStartYear: adv.deductionStartYear,
-        numberOfInstallments: adv.emiCount || 1,
-        requestDate: adv.createdAt,
-        reason: adv.reason || undefined,
-        status: adv.status as any,
-        createdAt: adv.createdAt,
-        updatedAt: adv.updatedAt
-      } as any;
+      return this.mapSalaryAdvance(adv);
     } catch (e) {
       console.error("[PostgresStorage] createSalaryAdvance error:", e);
       return this.fallback.createSalaryAdvance(data);
@@ -2008,26 +2209,15 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
     try {
       const updateValues: any = { updatedAt: new Date() };
       if (data.repaidAmount !== undefined) updateValues.repaidAmount = String(data.repaidAmount);
+      if (data.remainingAmount !== undefined) updateValues.remainingBalance = String(data.remainingAmount);
+      if (data.remainingBalance !== undefined) updateValues.remainingBalance = String(data.remainingBalance);
       if (data.status !== undefined) updateValues.status = data.status;
+      if (data.approvedBy !== undefined) updateValues.approvedBy = data.approvedBy;
+      if (data.approvalDate !== undefined) updateValues.approvalDate = data.approvalDate ? new Date(data.approvalDate) : null;
 
       const [adv] = await pgDb.update(pgSalaryAdvances).set(updateValues).where(eq(pgSalaryAdvances.id, id)).returning();
       try { await this.fallback.updateSalaryAdvance(id, data); } catch (_) {}
-
-      if (adv) {
-        return {
-          id: adv.id,
-          userId: adv.userId,
-          amount: Number(adv.amount),
-          monthlyDeduction: Number(adv.monthlyDeduction),
-          repaidAmount: Number(adv.repaidAmount),
-          deductionStartMonth: adv.deductionStartMonth,
-          deductionStartYear: adv.deductionStartYear,
-          reason: adv.reason || undefined,
-          status: adv.status as any,
-          createdAt: adv.createdAt,
-          updatedAt: adv.updatedAt
-        } as SalaryAdvance;
-      }
+      if (adv) return this.mapSalaryAdvance(adv);
     } catch (e) {
       console.error("[PostgresStorage] updateSalaryAdvance error:", e);
     }
@@ -2037,21 +2227,7 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
   async getSalaryAdvance(id: string): Promise<SalaryAdvance | undefined> {
     try {
       const [adv] = await pgDb.select().from(pgSalaryAdvances).where(eq(pgSalaryAdvances.id, id)).limit(1);
-      if (adv) {
-        return {
-          id: adv.id,
-          userId: adv.userId,
-          amount: Number(adv.amount),
-          monthlyDeduction: Number(adv.monthlyDeduction),
-          repaidAmount: Number(adv.repaidAmount),
-          deductionStartMonth: adv.deductionStartMonth,
-          deductionStartYear: adv.deductionStartYear,
-          reason: adv.reason || undefined,
-          status: adv.status as any,
-          createdAt: adv.createdAt,
-          updatedAt: adv.updatedAt
-        } as SalaryAdvance;
-      }
+      if (adv) return this.mapSalaryAdvance(adv);
     } catch (e) {
       console.error("[PostgresStorage] getSalaryAdvance error:", e);
     }
@@ -2072,19 +2248,7 @@ async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
         rows = await query.orderBy(desc(pgSalaryAdvances.createdAt));
       }
 
-      return rows.map(adv => ({
-        id: adv.id,
-        userId: adv.userId,
-        amount: Number(adv.amount),
-        monthlyDeduction: Number(adv.monthlyDeduction),
-        repaidAmount: Number(adv.repaidAmount),
-        deductionStartMonth: adv.deductionStartMonth,
-        deductionStartYear: adv.deductionStartYear,
-        reason: adv.reason || undefined,
-        status: adv.status as any,
-        createdAt: adv.createdAt,
-        updatedAt: adv.updatedAt
-      } as SalaryAdvance));
+      return rows.map(adv => this.mapSalaryAdvance(adv));
     } catch (e) {
       console.error("[PostgresStorage] listSalaryAdvances error:", e);
       return this.fallback.listSalaryAdvances(filters);

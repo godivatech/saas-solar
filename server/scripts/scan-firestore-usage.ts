@@ -57,3 +57,4 @@ console.log(`Found ${findings.length} occurrences in server code outside storage
 for (const f of findings) {
   console.log(`- ${f.file}:${f.line} -> ${f.text}`);
 }
+

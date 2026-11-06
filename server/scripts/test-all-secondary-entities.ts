@@ -271,3 +271,4 @@ main().catch(err => {
   console.error('\n❌ Forensic verification failed:', err);
   process.exit(1);
 });
+

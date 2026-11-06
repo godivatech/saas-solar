@@ -50,11 +50,18 @@ export class AutoCheckoutService {
                     continue;
                 }
 
+                // 🛡️ Resolve department: check record first, then query user profile as resilient fallback
+                let userDepartment = record.userDepartment;
+                if (!userDepartment && record.userId) {
+                    const user = await storage.getUser(record.userId);
+                    userDepartment = user?.department || null;
+                }
+
                 // 🛡️ HOLIDAY AWARENESS: Skip auto-checkout on company holidays
                 // If it's a holiday, employees are not expected to work, so we shouldn't auto-checkout 
                 // any lingering records which might be data artifacts or special cases.
                 const { UnifiedAttendanceService } = await import('./unified-attendance-service');
-                const { isHoliday } = await UnifiedAttendanceService.isHoliday(record.date, record.userDepartment);
+                const { isHoliday } = await UnifiedAttendanceService.isHoliday(record.date, userDepartment || undefined);
                 if (isHoliday) {
                     console.log(`[AUTO-CHECKOUT] 🌴 Skipping record ${record.id} - today is a company holiday`);
                     continue;
@@ -78,12 +85,12 @@ export class AutoCheckoutService {
                     }
                 }
 
-                if (!record.userDepartment) {
-                    console.warn(`[AUTO-CHECKOUT] ⚠️ Skipping record ${record.id} -missing department`);
+                if (!userDepartment) {
+                    console.warn(`[AUTO-CHECKOUT] ⚠️ Skipping record ${record.id} - missing department for user ${record.userId}`);
                     continue;
                 }
 
-                const timing = await EnterpriseTimeService.getDepartmentTiming(record.userDepartment);
+                const timing = await EnterpriseTimeService.getDepartmentTiming(userDepartment);
 
                 // Parse the department check-out time based on check-in time (handles cross-midnight shifts)
                 const deptCheckOutDate = EnterpriseTimeService.getExpectedCheckoutDateTime(record.checkInTime!, timing.checkOutTime);
@@ -100,7 +107,7 @@ export class AutoCheckoutService {
                     // Calculate final working hours using the established service
                     const metrics = await EnterpriseTimeService.calculateTimeMetrics(
                         record.userId,
-                        record.userDepartment,
+                        userDepartment,
                         record.checkInTime!,
                         checkOutTime
                     );

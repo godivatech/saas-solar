@@ -27,3 +27,4 @@ async function syncPaymentsTable() {
 }
 
 syncPaymentsTable().catch(console.error);
+

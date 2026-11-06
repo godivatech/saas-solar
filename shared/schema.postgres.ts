@@ -303,6 +303,7 @@ export const attendance = pgTable("attendance", {
   id: varchar("id", { length: 128 }).primaryKey().default(sql`gen_random_uuid()::text`),
   tenantId: varchar("tenant_id", { length: 128 }).references(() => tenants.id, { onDelete: "restrict" }),
   userId: varchar("user_id", { length: 128 }).notNull(),
+  userDepartment: varchar("user_department", { length: 100 }),
   date: timestamp("date", { withTimezone: true }).notNull(),
   checkInTime: timestamp("check_in_time", { withTimezone: true }),
   checkOutTime: timestamp("check_out_time", { withTimezone: true }),
@@ -353,10 +354,10 @@ export const leaveBalances = pgTable("leave_balances", {
   userId: varchar("user_id", { length: 128 }).notNull(),
   year: integer("year").notNull(),
   month: integer("month").notNull(),
-  casualLeaveBalance: integer("casual_leave_balance").default(1).notNull(),
-  casualLeaveUsed: integer("casual_leave_used").default(0).notNull(),
-  permissionHoursBalance: integer("permission_hours_balance").default(2).notNull(),
-  permissionHoursUsed: integer("permission_hours_used").default(0).notNull(),
+  casualLeaveBalance: numeric("casual_leave_balance", { precision: 5, scale: 2 }).default("1.00").notNull(),
+  casualLeaveUsed: numeric("casual_leave_used", { precision: 5, scale: 2 }).default("0.00").notNull(),
+  permissionHoursBalance: numeric("permission_hours_balance", { precision: 5, scale: 2 }).default("2.00").notNull(),
+  permissionHoursUsed: numeric("permission_hours_used", { precision: 5, scale: 2 }).default("0.00").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });

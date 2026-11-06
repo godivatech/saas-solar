@@ -615,6 +615,7 @@ export class UnifiedAttendanceService {
         // Update existing OT-only record with regular check-in data
         console.log('CHECK-IN: Updating existing OT-only attendance with regular check-in data');
         newAttendance = await storage.updateAttendance(existingAttendance.id, {
+          userDepartment: user.department,
           checkInTime: new Date(),
           attendanceType: request.attendanceType,
           reason: request.reason || '',
@@ -641,6 +642,7 @@ export class UnifiedAttendanceService {
         console.log('CHECK-IN: Creating new attendance record');
         const attendanceData = {
           userId: request.userId,
+          userDepartment: user.department,
           date: today,
           checkInTime: new Date(),
           attendanceType: request.attendanceType,
