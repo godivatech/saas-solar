@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 async function run() {
   try {
     console.log('🔄 Syncing missing columns on customers and audit_logs...');
-    
+
     // Customers table
     await db.execute(sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS assigned_sales_exec_id VARCHAR(128);
@@ -27,3 +27,4 @@ async function run() {
 }
 
 run();
+

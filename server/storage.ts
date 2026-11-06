@@ -4916,7 +4916,7 @@ export class FirestoreStorage implements IStorage {
 
   async createEmployee(data: z.infer<typeof insertEmployeeSchema>): Promise<Employee> {
     try {
-      const id = this.db.collection('employees').doc().id;
+      const id = (data as any).id || this.db.collection('employees').doc().id;
       const now = new Date();
 
       const employeeData = {
@@ -5040,7 +5040,7 @@ export class FirestoreStorage implements IStorage {
 
   async createEmployeeDocument(data: z.infer<typeof insertEmployeeDocumentSchema>): Promise<EmployeeDocument> {
     try {
-      const id = this.db.collection('employee_documents').doc().id;
+      const id = (data as any).id || this.db.collection('employee_documents').doc().id;
       const now = new Date();
 
       const documentData = {
@@ -5197,7 +5197,7 @@ export class FirestoreStorage implements IStorage {
 
   async createPerformanceReview(data: z.infer<typeof insertPerformanceReviewSchema>): Promise<PerformanceReview> {
     try {
-      const id = this.db.collection('performance_reviews').doc().id;
+      const id = (data as any).id || this.db.collection('performance_reviews').doc().id;
       const now = new Date();
 
       const reviewData = {
@@ -5623,7 +5623,7 @@ export class FirestoreStorage implements IStorage {
 
   async createPayrollFieldConfig(data: any): Promise<PayrollFieldConfig> {
     try {
-      const id = this.db.collection('payroll_field_configs').doc().id;
+      const id = (data as any).id || this.db.collection('payroll_field_configs').doc().id;
       const now = new Date();
 
       const configData = {

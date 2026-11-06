@@ -17,3 +17,4 @@ console.log('Total in IStorage:', methodsInIStorage.length);
 console.log('Total in PostgresStorage:', methodsInPg.length);
 console.log('Missing in PostgresStorage (' + missing.length + '):');
 console.log(missing.join('\n'));
+

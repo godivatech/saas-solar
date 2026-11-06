@@ -68,6 +68,36 @@ export class FollowUpService {
       // Create the follow-up document
       const docRef = await this.collection.add(firestoreData);
 
+      // Dual write to Neon PostgreSQL
+      try {
+        const { db: pgDb } = await import("../db");
+        const { followUpVisits } = await import("@shared/schema.postgres");
+        await pgDb.insert(followUpVisits).values({
+          id: docRef.id,
+          tenantId: "adc11a73-7ef8-417b-b930-28d1d855d707",
+          originalVisitId: validatedData.originalVisitId,
+          userId: validatedData.userId,
+          department: validatedData.department,
+          siteInTime: validatedData.siteInTime,
+          siteInLocation: validatedData.siteInLocation || null,
+          siteInPhotoUrl: validatedData.siteInPhotoUrl || null,
+          siteOutTime: validatedData.siteOutTime || null,
+          siteOutLocation: validatedData.siteOutLocation || null,
+          siteOutPhotoUrl: validatedData.siteOutPhotoUrl || null,
+          followUpReason: validatedData.followUpReason || "additional_work_required",
+          description: validatedData.description,
+          originalCustomerStatus: currentCustomerStatus,
+          affectsCustomerStatus: true,
+          sitePhotos: validatedData.sitePhotos || [],
+          siteOutPhotos: validatedData.siteOutPhotos || [],
+          status: validatedData.status || "in_progress",
+          customer: validatedData.customer,
+          notes: validatedData.notes || null
+        });
+      } catch (pgErr) {
+        console.warn("[FollowUpService] Neon Postgres sync warning:", pgErr);
+      }
+
       // Update the original visit with dynamic status management
       try {
         const currentCount = originalVisitData.followUpCount || 0;
@@ -205,6 +235,25 @@ export class FollowUpService {
 
       await docRef.update(firestoreUpdates);
 
+      // Update in Neon PostgreSQL
+      try {
+        const { db: pgDb } = await import("../db");
+        const { followUpVisits } = await import("@shared/schema.postgres");
+        const { eq } = await import("drizzle-orm");
+        const pgUpdates: any = { updatedAt: new Date() };
+        if (updates.siteOutTime) pgUpdates.siteOutTime = new Date(updates.siteOutTime);
+        if (updates.siteOutLocation) pgUpdates.siteOutLocation = updates.siteOutLocation;
+        if (updates.siteOutPhotoUrl) pgUpdates.siteOutPhotoUrl = updates.siteOutPhotoUrl;
+        if (updates.status) pgUpdates.status = updates.status;
+        if (updates.visitOutcome) pgUpdates.visitOutcome = updates.visitOutcome;
+        if (updates.outcomeNotes) pgUpdates.outcomeNotes = updates.outcomeNotes;
+        if (updates.scheduledFollowUpDate) pgUpdates.scheduledFollowUpDate = new Date(updates.scheduledFollowUpDate);
+        if (updates.notes) pgUpdates.notes = updates.notes;
+        await pgDb.update(followUpVisits).set(pgUpdates).where(eq(followUpVisits.id, id));
+      } catch (pgErr) {
+        console.warn("[FollowUpService] Neon Postgres update warning:", pgErr);
+      }
+
       const updatedDoc = await docRef.get();
       if (!updatedDoc.exists) {
         throw new Error('Follow-up visit not found after update');
@@ -227,6 +276,45 @@ export class FollowUpService {
    */
   async getFollowUpById(id: string): Promise<FollowUpSiteVisit | null> {
     try {
+      // Check Neon PostgreSQL first
+      try {
+        const { db: pgDb } = await import("../db");
+        const { followUpVisits } = await import("@shared/schema.postgres");
+        const { eq } = await import("drizzle-orm");
+        const [v] = await pgDb.select().from(followUpVisits).where(eq(followUpVisits.id, id)).limit(1);
+        if (v) {
+          return {
+            id: v.id,
+            originalVisitId: v.originalVisitId || "",
+            userId: v.userId,
+            department: v.department as any,
+            siteInTime: v.siteInTime,
+            siteInLocation: (v.siteInLocation as any) || undefined,
+            siteInPhotoUrl: v.siteInPhotoUrl || undefined,
+            siteOutTime: v.siteOutTime || undefined,
+            siteOutLocation: (v.siteOutLocation as any) || undefined,
+            siteOutPhotoUrl: v.siteOutPhotoUrl || undefined,
+            followUpReason: (v.followUpReason as any) || "additional_work_required",
+            description: v.description,
+            originalCustomerStatus: (v.originalCustomerStatus as any) || undefined,
+            affectsCustomerStatus: v.affectsCustomerStatus ?? true,
+            newCustomerStatus: (v.newCustomerStatus as any) || undefined,
+            sitePhotos: (v.sitePhotos as any[]) || [],
+            siteOutPhotos: (v.siteOutPhotos as any[]) || [],
+            status: v.status as any,
+            visitOutcome: (v.visitOutcome as any) || undefined,
+            outcomeNotes: v.outcomeNotes || undefined,
+            scheduledFollowUpDate: v.scheduledFollowUpDate || undefined,
+            customer: v.customer as any,
+            notes: v.notes || undefined,
+            createdAt: v.createdAt,
+            updatedAt: v.updatedAt
+          } as FollowUpSiteVisit;
+        }
+      } catch (pgErr) {
+        // Fallback to Firestore
+      }
+
       const doc = await this.collection.doc(id).get();
       if (!doc.exists) {
         return null;
