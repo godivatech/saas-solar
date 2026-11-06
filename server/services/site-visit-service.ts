@@ -1,9 +1,12 @@
 /**
- * Site Visit Management Service
+ * Site Visit Management Service - Enterprise PostgreSQL-First Architecture
  * Handles all field operations for Technical, Marketing, and Admin departments
  */
 
-import { db } from "../firebase";
+import { db as pgDb } from "../db";
+import { siteVisits as pgSiteVisits } from "@shared/schema.postgres";
+import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   SiteVisit,
@@ -16,258 +19,260 @@ import {
   AdminSiteVisit,
   SitePhoto
 } from "@shared/schema";
+import crypto from "crypto";
 
 export class SiteVisitService {
-  private collection = db.collection('siteVisits');
+  private collection = firestoreDb.collection('siteVisits');
 
   /**
-   * Create a new site visit
+   * Helper to convert PostgreSQL row to standard SiteVisit
+   */
+  private convertPostgresToSiteVisit(v: any): SiteVisit {
+    const originalPhotos = (v.sitePhotos || []).map((p: any) => ({
+      ...p,
+      timestamp: p.timestamp ? (p.timestamp instanceof Date ? p.timestamp : new Date(p.timestamp)) : new Date()
+    }));
+    const checkoutPhotos = (v.siteOutPhotos || []).map((p: any) => ({
+      ...p,
+      timestamp: p.timestamp ? (p.timestamp instanceof Date ? p.timestamp : new Date(p.timestamp)) : new Date()
+    }));
+    const allPhotos = [...originalPhotos, ...checkoutPhotos];
+
+    return {
+      id: v.id,
+      userId: v.userId,
+      department: v.department as any,
+      visitPurpose: v.visitPurpose,
+      status: v.status as any,
+      siteInTime: v.siteInTime instanceof Date ? v.siteInTime : new Date(v.siteInTime),
+      siteOutTime: v.siteOutTime ? (v.siteOutTime instanceof Date ? v.siteOutTime : new Date(v.siteOutTime)) : undefined,
+      customer: v.customer as any,
+      location: (v.location as any) || undefined,
+      technicalData: (v.technicalData as any) || undefined,
+      marketingData: (v.marketingData as any) || undefined,
+      adminData: (v.adminData as any) || undefined,
+      sitePhotos: allPhotos,
+      siteOutPhotos: checkoutPhotos,
+      isFollowUp: v.isFollowUp ?? false,
+      followUpOf: v.followUpOf || undefined,
+      hasFollowUps: v.hasFollowUps ?? false,
+      followUpCount: v.followUpCount ?? 0,
+      followUpReason: v.followUpReason || undefined,
+      followUpDescription: v.followUpDescription || undefined,
+      visitOutcome: v.visitOutcome || undefined,
+      outcomeNotes: v.outcomeNotes || undefined,
+      scheduledFollowUpDate: v.scheduledFollowUpDate ? (v.scheduledFollowUpDate instanceof Date ? v.scheduledFollowUpDate : new Date(v.scheduledFollowUpDate)) : undefined,
+      outcomeSelectedAt: v.outcomeSelectedAt ? (v.outcomeSelectedAt instanceof Date ? v.outcomeSelectedAt : new Date(v.outcomeSelectedAt)) : undefined,
+      outcomeSelectedBy: v.outcomeSelectedBy || undefined,
+      customerCurrentStatus: v.customerCurrentStatus || undefined,
+      lastActivityType: (v.lastActivityType as any) || "initial_visit",
+      lastActivityDate: v.lastActivityDate ? (v.lastActivityDate instanceof Date ? v.lastActivityDate : new Date(v.lastActivityDate)) : new Date(),
+      activeFollowUpId: v.activeFollowUpId || undefined,
+      autoCorrected: v.autoCorrected ?? false,
+      autoClosedAt: v.autoClosedAt ? (v.autoClosedAt instanceof Date ? v.autoClosedAt : new Date(v.autoClosedAt)) : undefined,
+      autoCorrectionReason: v.autoCorrectionReason || undefined,
+      notes: v.notes || undefined,
+      createdAt: v.createdAt instanceof Date ? v.createdAt : new Date(v.createdAt),
+      updatedAt: v.updatedAt instanceof Date ? v.updatedAt : new Date(v.updatedAt)
+    };
+  }
+
+  /**
+   * Helper to convert Firestore document data to SiteVisit
+   */
+  private convertFirestoreToSiteVisit(data: any): Omit<SiteVisit, 'id'> {
+    const originalPhotos = (data.sitePhotos || []).map((photo: any) => ({
+      ...photo,
+      timestamp: photo.timestamp?.toDate ? photo.timestamp.toDate() : (photo.timestamp instanceof Date ? photo.timestamp : new Date())
+    }));
+
+    const checkoutPhotos = (data.siteOutPhotos || []).map((photo: any) => ({
+      ...photo,
+      timestamp: photo.timestamp?.toDate ? photo.timestamp.toDate() : (photo.timestamp instanceof Date ? photo.timestamp : new Date())
+    }));
+
+    const allPhotos = [...originalPhotos, ...checkoutPhotos];
+
+    return {
+      ...data,
+      siteInTime: data.siteInTime?.toDate ? data.siteInTime.toDate() : (data.siteInTime instanceof Date ? data.siteInTime : new Date(data.siteInTime)),
+      siteOutTime: data.siteOutTime?.toDate ? data.siteOutTime.toDate() : (data.siteOutTime ? new Date(data.siteOutTime) : undefined),
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt || Date.now())),
+      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : (data.updatedAt instanceof Date ? data.updatedAt : new Date(data.updatedAt || Date.now())),
+      scheduledFollowUpDate: data.scheduledFollowUpDate ? (data.scheduledFollowUpDate?.toDate ? data.scheduledFollowUpDate.toDate() : new Date(data.scheduledFollowUpDate)) : undefined,
+      outcomeSelectedAt: data.outcomeSelectedAt ? (data.outcomeSelectedAt?.toDate ? data.outcomeSelectedAt.toDate() : new Date(data.outcomeSelectedAt)) : undefined,
+      sitePhotos: allPhotos,
+      siteOutPhotos: checkoutPhotos
+    };
+  }
+
+  /**
+   * Create a new site visit in PostgreSQL with safe Firestore replication
    */
   async createSiteVisit(data: InsertSiteVisit): Promise<SiteVisit> {
     try {
-      // Data is already validated in the route, so we can use it directly
-      const validatedData = data;
+      const id = (data as any).id || crypto.randomUUID();
+      const tenantId = (data as any).tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const now = new Date();
 
-      // Convert dates to Firestore timestamps
-      const firestoreData: any = {
-        ...validatedData,
-        siteInTime: Timestamp.fromDate(validatedData.siteInTime),
-        siteOutTime: validatedData.siteOutTime ? Timestamp.fromDate(validatedData.siteOutTime) : null,
-        createdAt: Timestamp.fromDate(validatedData.createdAt || new Date()),
-        updatedAt: Timestamp.fromDate(validatedData.updatedAt || new Date()),
-        sitePhotos: validatedData.sitePhotos?.map(photo => ({
-          ...photo,
-          timestamp: Timestamp.fromDate(photo.timestamp)
-        })) || []
+      const insertValues: any = {
+        id,
+        tenantId,
+        userId: data.userId,
+        department: data.department,
+        visitPurpose: data.visitPurpose,
+        status: data.status || "in_progress",
+        siteInTime: data.siteInTime instanceof Date ? data.siteInTime : new Date(data.siteInTime),
+        siteOutTime: data.siteOutTime ? (data.siteOutTime instanceof Date ? data.siteOutTime : new Date(data.siteOutTime)) : null,
+        customer: data.customer,
+        location: data.location || null,
+        technicalData: data.technicalData || null,
+        marketingData: data.marketingData || null,
+        adminData: data.adminData || null,
+        sitePhotos: data.sitePhotos || [],
+        siteOutPhotos: data.siteOutPhotos || [],
+        isFollowUp: data.isFollowUp ?? false,
+        followUpOf: data.followUpOf || null,
+        hasFollowUps: data.hasFollowUps ?? false,
+        followUpCount: data.followUpCount ?? 0,
+        followUpReason: data.followUpReason || null,
+        followUpDescription: data.followUpDescription || null,
+        visitOutcome: data.visitOutcome || null,
+        outcomeNotes: data.outcomeNotes || null,
+        scheduledFollowUpDate: data.scheduledFollowUpDate ? (data.scheduledFollowUpDate instanceof Date ? data.scheduledFollowUpDate : new Date(data.scheduledFollowUpDate)) : null,
+        outcomeSelectedAt: data.outcomeSelectedAt ? (data.outcomeSelectedAt instanceof Date ? data.outcomeSelectedAt : new Date(data.outcomeSelectedAt)) : null,
+        outcomeSelectedBy: data.outcomeSelectedBy || null,
+        customerCurrentStatus: data.customerCurrentStatus || null,
+        lastActivityType: data.lastActivityType || "initial_visit",
+        lastActivityDate: data.lastActivityDate ? (data.lastActivityDate instanceof Date ? data.lastActivityDate : new Date(data.lastActivityDate)) : now,
+        activeFollowUpId: data.activeFollowUpId || null,
+        autoCorrected: data.autoCorrected ?? false,
+        autoClosedAt: data.autoClosedAt ? (data.autoClosedAt instanceof Date ? data.autoClosedAt : new Date(data.autoClosedAt)) : null,
+        autoCorrectionReason: data.autoCorrectionReason || null,
+        notes: data.notes || null,
+        createdAt: data.createdAt ? (data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt)) : now,
+        updatedAt: data.updatedAt ? (data.updatedAt instanceof Date ? data.updatedAt : new Date(data.updatedAt)) : now
       };
 
-      // Remove undefined values to prevent Firestore errors
-      Object.keys(firestoreData).forEach(key => {
-        if (firestoreData[key] === undefined) {
-          delete firestoreData[key];
+      const [created] = await pgDb.insert(pgSiteVisits).values(insertValues).returning();
+
+      // Dual-write to Firestore asynchronously
+      (async () => {
+        try {
+          const firestoreData: any = {
+            ...insertValues,
+            siteInTime: Timestamp.fromDate(insertValues.siteInTime),
+            siteOutTime: insertValues.siteOutTime ? Timestamp.fromDate(insertValues.siteOutTime) : null,
+            createdAt: Timestamp.fromDate(insertValues.createdAt),
+            updatedAt: Timestamp.fromDate(insertValues.updatedAt),
+            scheduledFollowUpDate: insertValues.scheduledFollowUpDate ? Timestamp.fromDate(insertValues.scheduledFollowUpDate) : null,
+            outcomeSelectedAt: insertValues.outcomeSelectedAt ? Timestamp.fromDate(insertValues.outcomeSelectedAt) : null,
+            lastActivityDate: insertValues.lastActivityDate ? Timestamp.fromDate(insertValues.lastActivityDate) : null,
+            sitePhotos: insertValues.sitePhotos?.map((p: any) => ({
+              ...p,
+              timestamp: p.timestamp ? (p.timestamp instanceof Date ? Timestamp.fromDate(p.timestamp) : Timestamp.fromDate(new Date(p.timestamp))) : Timestamp.fromDate(new Date())
+            })) || []
+          };
+          Object.keys(firestoreData).forEach(k => firestoreData[k] === undefined && delete firestoreData[k]);
+          await this.collection.doc(id).set(firestoreData);
+        } catch (err) {
+          console.warn("[SiteVisitService] Dual-write to Firestore warning:", err);
         }
-      });
+      })();
 
-      const docRef = await this.collection.add(firestoreData);
-
-      // Dual-write to Neon PostgreSQL for relational integrity
-      try {
-        const { db: pgDb } = await import("../db");
-        const { siteVisits } = await import("@shared/schema.postgres");
-        await pgDb.insert(siteVisits).values({
-          id: docRef.id,
-          tenantId: "adc11a73-7ef8-417b-b930-28d1d855d707",
-          userId: validatedData.userId,
-          department: validatedData.department,
-          visitPurpose: validatedData.visitPurpose,
-          status: validatedData.status || "in_progress",
-          siteInTime: validatedData.siteInTime,
-          siteOutTime: validatedData.siteOutTime || null,
-          customer: validatedData.customer,
-          location: validatedData.location || null,
-          technicalData: validatedData.technicalData || null,
-          marketingData: validatedData.marketingData || null,
-          adminData: validatedData.adminData || null,
-          sitePhotos: validatedData.sitePhotos || [],
-          notes: validatedData.notes || null
-        });
-      } catch (pgErr) {
-        console.warn("[SiteVisitService] Neon Postgres sync warning:", pgErr);
-      }
-
-      const result = {
-        id: docRef.id,
-        ...this.convertFirestoreToSiteVisit(firestoreData)
-      };
-
-      return result;
+      return this.convertPostgresToSiteVisit(created);
     } catch (error) {
       console.error('SITE_VISIT_SERVICE: Error creating site visit:', error);
-      throw new Error('Failed to create site visit');
+      throw new Error(`Failed to create site visit: ${(error as Error).message}`);
     }
   }
 
   /**
-   * Update site visit (for check-out and progress updates)
+   * Update site visit in PostgreSQL with safe Firestore replication
    */
   async updateSiteVisit(id: string, updates: Partial<InsertSiteVisit>): Promise<SiteVisit> {
     try {
-      const docRef = this.collection.doc(id);
+      const pgUpdates: any = { updatedAt: new Date() };
 
-      // Convert dates to Firestore timestamps in updates
-      const firestoreUpdates: any = {
-        ...updates,
-        updatedAt: Timestamp.fromDate(new Date())
-      };
+      if (updates.status !== undefined) pgUpdates.status = updates.status;
+      if (updates.siteOutTime !== undefined) pgUpdates.siteOutTime = updates.siteOutTime ? (updates.siteOutTime instanceof Date ? updates.siteOutTime : new Date(updates.siteOutTime)) : null;
+      if (updates.technicalData !== undefined) pgUpdates.technicalData = updates.technicalData;
+      if (updates.marketingData !== undefined) pgUpdates.marketingData = updates.marketingData;
+      if (updates.adminData !== undefined) pgUpdates.adminData = updates.adminData;
+      if (updates.notes !== undefined) pgUpdates.notes = updates.notes;
+      if (updates.sitePhotos !== undefined) pgUpdates.sitePhotos = updates.sitePhotos;
+      if (updates.siteOutPhotos !== undefined) pgUpdates.siteOutPhotos = updates.siteOutPhotos;
+      if (updates.hasFollowUps !== undefined) pgUpdates.hasFollowUps = updates.hasFollowUps;
+      if (updates.followUpCount !== undefined) pgUpdates.followUpCount = updates.followUpCount;
+      if (updates.isFollowUp !== undefined) pgUpdates.isFollowUp = updates.isFollowUp;
+      if (updates.followUpOf !== undefined) pgUpdates.followUpOf = updates.followUpOf;
+      if (updates.followUpReason !== undefined) pgUpdates.followUpReason = updates.followUpReason;
+      if (updates.followUpDescription !== undefined) pgUpdates.followUpDescription = updates.followUpDescription;
+      if (updates.visitOutcome !== undefined) pgUpdates.visitOutcome = updates.visitOutcome;
+      if (updates.outcomeNotes !== undefined) pgUpdates.outcomeNotes = updates.outcomeNotes;
+      if (updates.scheduledFollowUpDate !== undefined) pgUpdates.scheduledFollowUpDate = updates.scheduledFollowUpDate ? (updates.scheduledFollowUpDate instanceof Date ? updates.scheduledFollowUpDate : new Date(updates.scheduledFollowUpDate)) : null;
+      if (updates.outcomeSelectedAt !== undefined) pgUpdates.outcomeSelectedAt = updates.outcomeSelectedAt ? (updates.outcomeSelectedAt instanceof Date ? updates.outcomeSelectedAt : new Date(updates.outcomeSelectedAt)) : null;
+      if (updates.outcomeSelectedBy !== undefined) pgUpdates.outcomeSelectedBy = updates.outcomeSelectedBy;
+      if (updates.customerCurrentStatus !== undefined) pgUpdates.customerCurrentStatus = updates.customerCurrentStatus;
+      if (updates.lastActivityType !== undefined) pgUpdates.lastActivityType = updates.lastActivityType;
+      if (updates.lastActivityDate !== undefined) pgUpdates.lastActivityDate = updates.lastActivityDate ? (updates.lastActivityDate instanceof Date ? updates.lastActivityDate : new Date(updates.lastActivityDate)) : new Date();
+      if (updates.activeFollowUpId !== undefined) pgUpdates.activeFollowUpId = updates.activeFollowUpId;
+      if (updates.autoCorrected !== undefined) pgUpdates.autoCorrected = updates.autoCorrected;
+      if (updates.autoClosedAt !== undefined) pgUpdates.autoClosedAt = updates.autoClosedAt ? (updates.autoClosedAt instanceof Date ? updates.autoClosedAt : new Date(updates.autoClosedAt)) : null;
+      if (updates.autoCorrectionReason !== undefined) pgUpdates.autoCorrectionReason = updates.autoCorrectionReason;
 
-      if (updates.siteOutTime) {
-        // Handle both Date objects and ISO strings with error handling
+      const [updated] = await pgDb.update(pgSiteVisits).set(pgUpdates).where(eq(pgSiteVisits.id, id)).returning();
+
+      if (!updated) {
+        // Fallback check Firestore
+        const docRef = this.collection.doc(id);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          throw new Error('Site visit not found');
+        }
+        await docRef.update({ ...updates, updatedAt: Timestamp.fromDate(new Date()) });
+        const refreshed = await docRef.get();
+        return { id: refreshed.id, ...this.convertFirestoreToSiteVisit(refreshed.data()!) };
+      }
+
+      // Replicate updates to Firestore in background
+      (async () => {
         try {
-          const siteOutDate = updates.siteOutTime instanceof Date
-            ? updates.siteOutTime
-            : new Date(updates.siteOutTime);
-          firestoreUpdates.siteOutTime = Timestamp.fromDate(siteOutDate);
-        } catch (error) {
-          console.warn('Failed to parse siteOutTime, using current time:', error);
-          firestoreUpdates.siteOutTime = Timestamp.fromDate(new Date());
+          const docRef = this.collection.doc(id);
+          const firestoreUpdates: any = { ...updates, updatedAt: Timestamp.fromDate(new Date()) };
+          if (updates.siteOutTime) firestoreUpdates.siteOutTime = Timestamp.fromDate(new Date(updates.siteOutTime));
+          if (updates.scheduledFollowUpDate) firestoreUpdates.scheduledFollowUpDate = Timestamp.fromDate(new Date(updates.scheduledFollowUpDate));
+          if (updates.outcomeSelectedAt) firestoreUpdates.outcomeSelectedAt = Timestamp.fromDate(new Date(updates.outcomeSelectedAt));
+          Object.keys(firestoreUpdates).forEach(k => firestoreUpdates[k] === undefined && delete firestoreUpdates[k]);
+          await docRef.set(firestoreUpdates, { merge: true });
+        } catch (err) {
+          console.warn("[SiteVisitService] Firestore async update warning:", err);
         }
-      }
+      })();
 
-      if (updates.sitePhotos) {
-        firestoreUpdates.sitePhotos = updates.sitePhotos.map(photo => {
-          const processedPhoto: any = { ...photo };
-
-          // Handle timestamp conversion safely with try-catch
-          if (photo.timestamp) {
-            try {
-              processedPhoto.timestamp = photo.timestamp instanceof Date
-                ? Timestamp.fromDate(photo.timestamp)
-                : Timestamp.fromDate(new Date(photo.timestamp));
-            } catch (error) {
-              console.warn('Failed to parse photo timestamp, using current time:', error);
-              processedPhoto.timestamp = Timestamp.fromDate(new Date());
-            }
-          } else {
-            // If no timestamp, use current date
-            processedPhoto.timestamp = Timestamp.fromDate(new Date());
-          }
-
-          return processedPhoto;
-        });
-      }
-
-      // Handle checkout site photos (siteOutPhotos) with robust error handling
-      if (updates.siteOutPhotos) {
-        firestoreUpdates.siteOutPhotos = updates.siteOutPhotos.map((photo: any) => {
-          const processedPhoto: any = { ...photo };
-
-          // Handle timestamp conversion safely for checkout photos with try-catch
-          if (photo.timestamp) {
-            try {
-              processedPhoto.timestamp = photo.timestamp instanceof Date
-                ? Timestamp.fromDate(photo.timestamp)
-                : Timestamp.fromDate(new Date(photo.timestamp));
-            } catch (error) {
-              console.warn('Failed to parse checkout photo timestamp, using current time:', error);
-              processedPhoto.timestamp = Timestamp.fromDate(new Date());
-            }
-          } else {
-            // If no timestamp, use current date
-            processedPhoto.timestamp = Timestamp.fromDate(new Date());
-          }
-
-          return processedPhoto;
-        });
-      }
-
-      // Handle updatedAt conversion - can be Date object or ISO string
-      if (updates.updatedAt) {
-        try {
-          const updatedAtDate = updates.updatedAt instanceof Date
-            ? updates.updatedAt
-            : new Date(updates.updatedAt);
-          firestoreUpdates.updatedAt = Timestamp.fromDate(updatedAtDate);
-        } catch (error) {
-          console.warn('Failed to parse updatedAt, using current time:', error);
-          firestoreUpdates.updatedAt = Timestamp.fromDate(new Date());
-        }
-      }
-
-      // Remove undefined values to prevent Firestore errors
-      Object.keys(firestoreUpdates).forEach(key => {
-        if (firestoreUpdates[key] === undefined) {
-          delete firestoreUpdates[key];
-        }
-      });
-
-      await docRef.update(firestoreUpdates);
-
-      try {
-        const { db: pgDb } = await import("../db");
-        const { siteVisits } = await import("@shared/schema.postgres");
-        const { eq } = await import("drizzle-orm");
-        const pgUpdates: any = { updatedAt: new Date() };
-        if (updates.status !== undefined) pgUpdates.status = updates.status;
-        if (updates.siteOutTime !== undefined) pgUpdates.siteOutTime = new Date(updates.siteOutTime);
-        if (updates.technicalData !== undefined) pgUpdates.technicalData = updates.technicalData;
-        if (updates.marketingData !== undefined) pgUpdates.marketingData = updates.marketingData;
-        if (updates.adminData !== undefined) pgUpdates.adminData = updates.adminData;
-        if (updates.notes !== undefined) pgUpdates.notes = updates.notes;
-        if (updates.sitePhotos !== undefined) pgUpdates.sitePhotos = updates.sitePhotos;
-
-        await pgDb.update(siteVisits).set(pgUpdates).where(eq(siteVisits.id, id));
-      } catch (pgErr) {
-        console.warn("[SiteVisitService] Neon Postgres update warning:", pgErr);
-      }
-
-      const updatedDoc = await docRef.get();
-      if (!updatedDoc.exists) {
-        throw new Error('Site visit not found');
-      }
-
-      const result = {
-        id: updatedDoc.id,
-        ...this.convertFirestoreToSiteVisit(updatedDoc.data()!)
-      };
-
-      return result;
+      return this.convertPostgresToSiteVisit(updated);
     } catch (error) {
-      console.error('=== SITE VISIT UPDATE ERROR ===');
-      console.error('Error updating site visit:', error);
-      console.error('Error name:', (error as Error).name);
-      console.error('Error message:', (error as Error).message);
-      console.error('Error stack:', (error as Error).stack);
-      console.error('Updates that caused error:', JSON.stringify(updates, null, 2));
-      console.error('=====================================');
+      console.error('SITE_VISIT_SERVICE: Error updating site visit:', error);
       throw new Error(`Failed to update site visit: ${(error as Error).message}`);
     }
   }
 
   /**
-   * Get site visit by ID
+   * Get site visit by ID (PostgreSQL first, Firestore fallback)
    */
   async getSiteVisitById(id: string): Promise<SiteVisit | null> {
     try {
-      // First check Neon PostgreSQL
-      try {
-        const { db: pgDb } = await import("../db");
-        const { siteVisits } = await import("@shared/schema.postgres");
-        const { eq } = await import("drizzle-orm");
-        const [v] = await pgDb.select().from(siteVisits).where(eq(siteVisits.id, id)).limit(1);
-        if (v) {
-          return {
-            id: v.id,
-            userId: v.userId,
-            department: v.department as any,
-            visitPurpose: v.visitPurpose,
-            status: v.status as any,
-            siteInTime: v.siteInTime,
-            siteOutTime: v.siteOutTime || undefined,
-            customer: v.customer as any,
-            location: (v.location as any) || undefined,
-            technicalData: (v.technicalData as any) || undefined,
-            marketingData: (v.marketingData as any) || undefined,
-            adminData: (v.adminData as any) || undefined,
-            sitePhotos: (v.sitePhotos as any[]) || [],
-            notes: v.notes || undefined,
-            createdAt: v.createdAt,
-            updatedAt: v.updatedAt
-          } as SiteVisit;
-        }
-      } catch (pgErr) {
-        // Fallback to Firestore
+      const [v] = await pgDb.select().from(pgSiteVisits).where(eq(pgSiteVisits.id, id)).limit(1);
+      if (v) {
+        return this.convertPostgresToSiteVisit(v);
       }
 
+      // Fallback to Firestore
       const doc = await this.collection.doc(id).get();
-
       if (!doc.exists) {
         return null;
       }
-
-      return {
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data()!)
-      };
+      return { id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()!) };
     } catch (error) {
       console.error('Error getting site visit:', error);
       throw new Error('Failed to get site visit');
@@ -279,19 +284,22 @@ export class SiteVisitService {
    */
   async getSiteVisitsByUser(userId: string, limit = 50): Promise<SiteVisit[]> {
     try {
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .where(eq(pgSiteVisits.userId, userId))
+        .orderBy(desc(pgSiteVisits.siteInTime))
+        .limit(limit);
+
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
+    } catch (error) {
+      console.error('Error getting user site visits:', error);
+      // Fallback to Firestore
       const snapshot = await this.collection
         .where('userId', '==', userId)
         .orderBy('createdAt', 'desc')
         .limit(limit)
         .get();
-
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
-    } catch (error) {
-      console.error('Error getting user site visits:', error);
-      throw new Error('Failed to get user site visits');
+      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
@@ -300,19 +308,21 @@ export class SiteVisitService {
    */
   async getSiteVisitsByDepartment(department: 'technical' | 'marketing' | 'admin', limit = 100): Promise<SiteVisit[]> {
     try {
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .where(eq(pgSiteVisits.department, department))
+        .orderBy(desc(pgSiteVisits.siteInTime))
+        .limit(limit);
+
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
+    } catch (error) {
+      console.error('Error getting department site visits:', error);
       const snapshot = await this.collection
         .where('department', '==', department)
         .orderBy('createdAt', 'desc')
         .limit(limit)
         .get();
-
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
-    } catch (error) {
-      console.error('Error getting department site visits:', error);
-      throw new Error('Failed to get department site visits');
+      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
@@ -321,22 +331,17 @@ export class SiteVisitService {
    */
   async getActiveSiteVisits(): Promise<SiteVisit[]> {
     try {
-      // Remove orderBy to avoid compound index requirement
-      // Sort in-memory instead
-      const snapshot = await this.collection
-        .where('status', '==', 'in_progress')
-        .get();
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .where(eq(pgSiteVisits.status, 'in_progress'))
+        .orderBy(desc(pgSiteVisits.siteInTime));
 
-      const results = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
-
-      // Sort by siteInTime descending in-memory
-      return results.sort((a, b) => b.siteInTime.getTime() - a.siteInTime.getTime());
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
     } catch (error) {
       console.error('Error getting active site visits:', error);
-      throw new Error('Failed to get active site visits');
+      const snapshot = await this.collection.where('status', '==', 'in_progress').get();
+      const results = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      return results.sort((a, b) => b.siteInTime.getTime() - a.siteInTime.getTime());
     }
   }
 
@@ -345,24 +350,28 @@ export class SiteVisitService {
    */
   async getSiteVisitsByDateRange(startDate: Date, endDate: Date): Promise<SiteVisit[]> {
     try {
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .where(and(
+          gte(pgSiteVisits.siteInTime, startDate),
+          lte(pgSiteVisits.siteInTime, endDate)
+        ))
+        .orderBy(desc(pgSiteVisits.siteInTime));
+
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
+    } catch (error) {
+      console.error('Error getting site visits by date range:', error);
       const snapshot = await this.collection
         .where('siteInTime', '>=', Timestamp.fromDate(startDate))
         .where('siteInTime', '<=', Timestamp.fromDate(endDate))
         .orderBy('siteInTime', 'desc')
         .get();
-
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
-    } catch (error) {
-      console.error('Error getting site visits by date range:', error);
-      throw new Error('Failed to get site visits by date range');
+      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
   /**
-   * Get site visits with filters
+   * Get site visits with dynamic filters (using indexed SQL queries)
    */
   async getSiteVisitsWithFilters(filters: {
     userId?: string;
@@ -375,72 +384,60 @@ export class SiteVisitService {
     limit?: number;
   }): Promise<SiteVisit[]> {
     try {
-      // Ultra-simplified approach: Get all data without any compound queries
-      // This completely avoids Firebase index requirements
-      let query: FirebaseFirestore.Query | FirebaseFirestore.CollectionReference = this.collection;
+      const conditions: any[] = [];
 
-      // Only apply ONE simple equality filter if needed
-      if (filters.userId) {
-        query = query.where('userId', '==', filters.userId);
-      } else if (filters.department) {
-        query = query.where('department', '==', filters.department);
+      if (filters.userId) conditions.push(eq(pgSiteVisits.userId, filters.userId));
+      if (filters.department) conditions.push(eq(pgSiteVisits.department, filters.department));
+      if (filters.status) conditions.push(eq(pgSiteVisits.status, filters.status));
+      if (filters.visitPurpose) conditions.push(eq(pgSiteVisits.visitPurpose, filters.visitPurpose));
+      if (filters.customerCurrentStatus) conditions.push(eq(pgSiteVisits.customerCurrentStatus, filters.customerCurrentStatus));
+      if (filters.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
+      if (filters.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
+
+      let query = pgDb.select().from(pgSiteVisits);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
       }
-      // For master admin, get all data without any query filters
+
+      const rows = await query
+        .orderBy(desc(pgSiteVisits.siteInTime))
+        .limit(filters.limit || 100);
+
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
+    } catch (error) {
+      console.error('Error getting filtered site visits:', error);
+      // Fallback to in-memory Firestore filtering
+      let query: any = this.collection;
+      if (filters.userId) query = query.where('userId', '==', filters.userId);
+      else if (filters.department) query = query.where('department', '==', filters.department);
 
       const snapshot = await query.limit(filters.limit || 100).get();
-      let results = snapshot.docs.map(doc => ({
+      let results = snapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...this.convertFirestoreToSiteVisit(doc.data())
       }));
 
-      // Apply all other filters in memory to avoid compound index requirements
-      if (filters.status) {
-        results = results.filter(sv => sv.status === filters.status);
-      }
-
-      if (filters.startDate) {
-        results = results.filter(sv => sv.siteInTime >= filters.startDate!);
-      }
-
-      if (filters.endDate) {
-        results = results.filter(sv => sv.siteInTime <= filters.endDate!);
-      }
-
-      if (filters.visitPurpose) {
-        results = results.filter(sv => sv.visitPurpose === filters.visitPurpose);
-      }
-
+      if (filters.status) results = results.filter(sv => sv.status === filters.status);
+      if (filters.startDate) results = results.filter(sv => sv.siteInTime >= filters.startDate!);
+      if (filters.endDate) results = results.filter(sv => sv.siteInTime <= filters.endDate!);
+      if (filters.visitPurpose) results = results.filter(sv => sv.visitPurpose === filters.visitPurpose);
       if (filters.customerCurrentStatus) {
-        // Use customerCurrentStatus if available, fallback to visitOutcome for backward compatibility
-        results = results.filter(sv => {
-          const effectiveStatus = sv.customerCurrentStatus || sv.visitOutcome;
-          return effectiveStatus === filters.customerCurrentStatus;
-        });
+        results = results.filter(sv => (sv.customerCurrentStatus || sv.visitOutcome) === filters.customerCurrentStatus);
       }
-
-      // Sort results by date descending (newest first)
-      results.sort((a, b) => b.siteInTime.getTime() - a.siteInTime.getTime());
-
-      return results;
-    } catch (error) {
-      console.error('Error getting filtered site visits:', error);
-      throw new Error('Failed to get filtered site visits');
+      return results.sort((a, b) => b.siteInTime.getTime() - a.siteInTime.getTime());
     }
   }
 
   /**
-   * Delete site visit
+   * Delete site visit from PostgreSQL and Firestore
    */
   async deleteSiteVisit(id: string): Promise<void> {
     try {
-      await this.collection.doc(id).delete();
+      await pgDb.delete(pgSiteVisits).where(eq(pgSiteVisits.id, id));
       try {
-        const { db: pgDb } = await import("../db");
-        const { siteVisits } = await import("@shared/schema.postgres");
-        const { eq } = await import("drizzle-orm");
-        await pgDb.delete(siteVisits).where(eq(siteVisits.id, id));
-      } catch (pgErr) {
-        console.warn("[SiteVisitService] Neon Postgres delete warning:", pgErr);
+        await this.collection.doc(id).delete();
+      } catch (fbErr) {
+        console.warn("[SiteVisitService] Firestore async delete warning:", fbErr);
       }
     } catch (error) {
       console.error('Error deleting site visit:', error);
@@ -453,35 +450,17 @@ export class SiteVisitService {
    */
   async addSitePhotos(siteVisitId: string, photos: SitePhoto[]): Promise<SiteVisit> {
     try {
-      const docRef = this.collection.doc(siteVisitId);
-      const doc = await docRef.get();
-
-      if (!doc.exists) {
+      const existing = await this.getSiteVisitById(siteVisitId);
+      if (!existing) {
         throw new Error('Site visit not found');
       }
 
-      const currentData = doc.data()!;
-      const currentPhotos = currentData.sitePhotos || [];
+      const currentPhotos = existing.sitePhotos || [];
+      const updatedPhotos = [...currentPhotos, ...photos].slice(0, 20);
 
-      // Convert new photos to Firestore format
-      const firestorePhotos = photos.map(photo => ({
-        ...photo,
-        timestamp: Timestamp.fromDate(photo.timestamp)
-      }));
-
-      // Ensure we don't exceed 20 photos limit
-      const updatedPhotos = [...currentPhotos, ...firestorePhotos].slice(0, 20);
-
-      await docRef.update({
-        sitePhotos: updatedPhotos,
-        updatedAt: Timestamp.fromDate(new Date())
+      return await this.updateSiteVisit(siteVisitId, {
+        sitePhotos: updatedPhotos
       });
-
-      const updatedDoc = await docRef.get();
-      return {
-        id: updatedDoc.id,
-        ...this.convertFirestoreToSiteVisit(updatedDoc.data()!)
-      };
     } catch (error) {
       console.error('Error adding site photos:', error);
       throw new Error('Failed to add site photos');
@@ -489,7 +468,7 @@ export class SiteVisitService {
   }
 
   /**
-   * Get site visit analytics/statistics
+   * Get site visit analytics/statistics directly from PostgreSQL
    */
   async getSiteVisitStats(filters?: {
     department?: 'technical' | 'marketing' | 'admin';
@@ -497,35 +476,29 @@ export class SiteVisitService {
     endDate?: Date;
   }) {
     try {
-      let query: FirebaseFirestore.Query | FirebaseFirestore.CollectionReference = this.collection;
+      const conditions: any[] = [];
+      if (filters?.department) conditions.push(eq(pgSiteVisits.department, filters.department));
+      if (filters?.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
+      if (filters?.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
 
-      if (filters?.department) {
-        query = query.where('department', '==', filters.department);
+      let query = pgDb.select().from(pgSiteVisits);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
       }
 
-      if (filters?.startDate) {
-        query = query.where('siteInTime', '>=', Timestamp.fromDate(filters.startDate));
-      }
-
-      if (filters?.endDate) {
-        query = query.where('siteInTime', '<=', Timestamp.fromDate(filters.endDate));
-      }
-
-      const snapshot = await query.get();
-      const siteVisits = snapshot.docs.map((doc: any) => doc.data());
-
+      const rows = await query;
       return {
-        total: siteVisits.length,
-        inProgress: siteVisits.filter((sv: any) => sv.status === 'in_progress').length,
-        completed: siteVisits.filter((sv: any) => sv.status === 'completed').length,
-        cancelled: siteVisits.filter((sv: any) => sv.status === 'cancelled').length,
+        total: rows.length,
+        inProgress: rows.filter(r => r.status === 'in_progress').length,
+        completed: rows.filter(r => r.status === 'completed').length,
+        cancelled: rows.filter(r => r.status === 'cancelled').length,
         byDepartment: {
-          technical: siteVisits.filter((sv: any) => sv.department === 'technical').length,
-          marketing: siteVisits.filter((sv: any) => sv.department === 'marketing').length,
-          admin: siteVisits.filter((sv: any) => sv.department === 'admin').length
+          technical: rows.filter(r => r.department === 'technical').length,
+          marketing: rows.filter(r => r.department === 'marketing').length,
+          admin: rows.filter(r => r.department === 'admin').length
         },
-        byPurpose: siteVisits.reduce((acc: any, sv: any) => {
-          acc[sv.visitPurpose] = (acc[sv.visitPurpose] || 0) + 1;
+        byPurpose: rows.reduce((acc: any, r) => {
+          acc[r.visitPurpose] = (acc[r.visitPurpose] || 0) + 1;
           return acc;
         }, {} as Record<string, number>)
       };
@@ -536,181 +509,25 @@ export class SiteVisitService {
   }
 
   /**
-   * Get all site visits for monitoring dashboard (Master Admin and HR only)
+   * Get all site visits for monitoring dashboard
    */
   async getAllSiteVisitsForMonitoring(): Promise<SiteVisit[]> {
     try {
-      const snapshot = await this.collection
-        .orderBy('siteInTime', 'desc')
-        .limit(500) // Limit to recent 500 for performance
-        .get();
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .orderBy(desc(pgSiteVisits.siteInTime))
+        .limit(500);
 
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
+      return rows.map(r => this.convertPostgresToSiteVisit(r));
     } catch (error) {
       console.error('Error getting site visits for monitoring:', error);
-      throw new Error('Failed to get site visits for monitoring');
+      const snapshot = await this.collection.orderBy('siteInTime', 'desc').limit(500).get();
+      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
   /**
-   * Export site visits to Excel format
-   */
-  async exportSiteVisitsToExcel(filters?: {
-    department?: string;
-    status?: string;
-    startDate?: Date;
-    endDate?: Date;
-  }): Promise<Buffer> {
-    try {
-      // Import xlsx dynamically to avoid bundling issues
-      const XLSX = await import('xlsx');
-
-      let query: any = this.collection.orderBy('siteInTime', 'desc');
-
-      // Apply filters
-      if (filters?.department) {
-        query = query.where('department', '==', filters.department);
-      }
-      if (filters?.status) {
-        query = query.where('status', '==', filters.status);
-      }
-      if (filters?.startDate) {
-        query = query.where('siteInTime', '>=', Timestamp.fromDate(filters.startDate));
-      }
-      if (filters?.endDate) {
-        query = query.where('siteInTime', '<=', Timestamp.fromDate(filters.endDate));
-      }
-
-      const snapshot = await query.get();
-      const siteVisits = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
-
-      // Transform data for Excel export
-      const excelData = siteVisits.map((visit: any) => {
-        const baseData: any = {
-          'Visit ID': visit.id,
-          'Employee Name': visit.userId,
-          'Department': visit.department,
-          'Customer Name': (visit as any).customerDetails?.name || visit.customerName || 'N/A',
-          'Customer Phone': (visit as any).customerDetails?.mobile || visit.customerPhone || 'N/A',
-          'Customer Email': (visit as any).customerDetails?.email || visit.customerEmail || 'N/A',
-          'Customer Source': (visit as any).customerDetails?.source || 'N/A',
-          'Visit Purpose': visit.visitPurpose,
-          'Status': visit.status,
-          'Visit Outcome': visit.visitOutcome || 'N/A',
-          'Check-in Time': visit.siteInTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-          'Check-in Location': visit.siteInLocation || 'N/A',
-          'Check-out Time': visit.siteOutTime ? visit.siteOutTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not checked out',
-          'Check-out Location': visit.siteOutLocation || 'N/A',
-          'Notes': visit.notes || 'N/A',
-          'Photos Count': visit.sitePhotos?.length || 0,
-          'Created At': visit.createdAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
-        };
-
-        // Add marketing configuration data if available
-        if (visit.marketingData) {
-          const config = visit.marketingData.onGridConfig || visit.marketingData.offGridConfig ||
-            visit.marketingData.hybridConfig || visit.marketingData.waterPumpConfig;
-
-          if (config) {
-            baseData['Panel Watts'] = config.panelWatts || 'N/A';
-            baseData['Panel Type'] = config.panelType ?
-              (config.panelType === 'bifacial' ? 'Bifacial' :
-                config.panelType === 'topcon' ? 'Topcon' : 'Mono-PERC') : 'N/A';
-            baseData['DCR Panel Count'] = config.dcrPanelCount || 0;
-            baseData['NON DCR Panel Count'] = config.nonDcrPanelCount || 0;
-            baseData['Total Panel Count'] = config.panelCount || 'N/A';
-            baseData['Inverter KW'] = config.inverterKW || 'N/A';
-            baseData['Inverter Phase'] = config.inverterPhase || 'N/A';
-            baseData['Inverter Qty'] = config.inverterQty || 'N/A';
-            baseData['Electrical Accessories'] = config.electricalAccessories ? 'Yes' : 'No';
-            baseData['Electrical Count'] = config.electricalCount || 0;
-            baseData['Lightning Arrestor'] = config.lightningArrest ? 'Yes' : 'No';
-            baseData['Structure Type'] = config.structureType ?
-              (config.structureType === 'gp_structure' ? 'GP Structure' : 'Mono Rail') : 'N/A';
-
-            if (config.gpStructure) {
-              baseData['Lower End Height'] = config.gpStructure.lowerEndHeight || 'N/A';
-              baseData['Higher End Height'] = config.gpStructure.higherEndHeight || 'N/A';
-            }
-
-            if (config.monoRail) {
-              baseData['Mono Rail Type'] = config.monoRail.type === 'mini_rail' ? 'Mini Rail' : 'Long Rail';
-            }
-
-            baseData['Project Value'] = config.projectValue || 'N/A';
-          }
-        }
-
-        return baseData;
-      });
-
-      // Create workbook and worksheet
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-
-      // Auto-fit column widths (adjust based on actual columns present)
-      const firstRow = excelData[0] || {};
-      const columnWidths = Object.keys(firstRow).map(key => {
-        // Set specific widths for known columns
-        const widthMap: Record<string, number> = {
-          'Visit ID': 15,
-          'Employee Name': 20,
-          'Department': 12,
-          'Customer Name': 25,
-          'Customer Phone': 15,
-          'Customer Email': 25,
-          'Customer Source': 15,
-          'Visit Purpose': 15,
-          'Status': 12,
-          'Visit Outcome': 12,
-          'Check-in Time': 20,
-          'Check-in Location': 30,
-          'Check-out Time': 20,
-          'Check-out Location': 30,
-          'Notes': 40,
-          'Photos Count': 12,
-          'Created At': 20,
-          'Panel Watts': 12,
-          'Panel Type': 12,
-          'DCR Panel Count': 15,
-          'NON DCR Panel Count': 18,
-          'Total Panel Count': 15,
-          'Inverter KW': 12,
-          'Inverter Phase': 15,
-          'Inverter Qty': 12,
-          'Electrical Accessories': 20,
-          'Electrical Count': 15,
-          'Lightning Arrestor': 18,
-          'Structure Type': 15,
-          'Lower End Height': 15,
-          'Higher End Height': 15,
-          'Mono Rail Type': 15,
-          'Project Value': 15
-        };
-        return { wch: widthMap[key] || 15 };
-      });
-      worksheet['!cols'] = columnWidths;
-
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Site Visits');
-
-      // Generate buffer
-      const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      return excelBuffer;
-    } catch (error) {
-      console.error('Error exporting site visits to Excel:', error);
-      throw new Error('Failed to export site visits to Excel');
-    }
-  }
-
-  /**
-   * Quick update site visit outcome without full checkout process
-   * For simple actions like convert, cancel, reschedule
+   * Quick update site visit outcome (convert, cancel, reschedule)
    */
   async quickUpdateSiteVisit(id: string, action: 'convert' | 'cancel' | 'reschedule', options: {
     scheduledFollowUpDate?: Date;
@@ -719,36 +536,27 @@ export class SiteVisitService {
     userId: string;
   }): Promise<SiteVisit> {
     try {
-      const docRef = this.collection.doc(id);
-
-      // Get existing site visit to validate
-      const existingDoc = await docRef.get();
-      if (!existingDoc.exists) {
-        throw new Error('Site visit not found');
-      }
-
-      // Prepare quick update data
-      const updateData: any = {
-        updatedAt: Timestamp.fromDate(new Date()),
-        outcomeSelectedAt: Timestamp.fromDate(new Date()),
+      const now = new Date();
+      const updateData: Partial<InsertSiteVisit> = {
+        updatedAt: now,
+        outcomeSelectedAt: now,
         outcomeSelectedBy: options.userId
       };
 
-      // Apply action-specific updates
       switch (action) {
         case 'convert':
           updateData.visitOutcome = 'converted';
-          updateData.status = 'completed'; // Also mark technical status as completed
-          updateData.scheduledFollowUpDate = null; // Clear follow-up date as visit is completed
-          if (options.outcomeNotes) {
-            updateData.outcomeNotes = options.outcomeNotes;
-          }
+          updateData.status = 'completed';
+          updateData.customerCurrentStatus = 'converted';
+          updateData.scheduledFollowUpDate = null as any;
+          if (options.outcomeNotes) updateData.outcomeNotes = options.outcomeNotes;
           break;
 
         case 'cancel':
           updateData.visitOutcome = 'cancelled';
-          updateData.status = 'cancelled'; // Also mark technical status as cancelled
-          updateData.scheduledFollowUpDate = null; // Clear follow-up date as visit is cancelled
+          updateData.status = 'cancelled';
+          updateData.customerCurrentStatus = 'cancelled';
+          updateData.scheduledFollowUpDate = null as any;
           if (options.reason || options.outcomeNotes) {
             updateData.outcomeNotes = options.reason || options.outcomeNotes || 'Visit cancelled';
           }
@@ -758,12 +566,12 @@ export class SiteVisitService {
           if (!options.scheduledFollowUpDate) {
             throw new Error('Scheduled follow-up date is required for reschedule action');
           }
-          updateData.visitOutcome = 'on_process'; // Keep as on_process
-          updateData.scheduledFollowUpDate = Timestamp.fromDate(options.scheduledFollowUpDate);
+          updateData.visitOutcome = 'on_process';
+          updateData.customerCurrentStatus = 'on_process';
+          updateData.scheduledFollowUpDate = options.scheduledFollowUpDate;
           if (options.reason || options.outcomeNotes) {
             updateData.outcomeNotes = options.reason || options.outcomeNotes || 'Visit rescheduled';
           }
-          // Note: For reschedule, we don't set outcomeSelectedAt/By as this is not a final outcome
           delete updateData.outcomeSelectedAt;
           delete updateData.outcomeSelectedBy;
           break;
@@ -772,69 +580,85 @@ export class SiteVisitService {
           throw new Error(`Invalid quick action: ${action}`);
       }
 
-      // Update the document
-      await docRef.update(updateData);
-
-      // Get the updated document
-      const updatedDoc = await docRef.get();
-      if (!updatedDoc.exists) {
-        throw new Error('Site visit not found after update');
-      }
-
-      const result = {
-        id: updatedDoc.id,
-        ...this.convertFirestoreToSiteVisit(updatedDoc.data()!)
-      };
-
-      return result;
+      return await this.updateSiteVisit(id, updateData);
     } catch (error) {
-      console.error('=== QUICK UPDATE ERROR ===');
       console.error('Error in quick update:', error);
-      console.error('Site visit ID:', id);
-      console.error('Action:', action);
-      console.error('Options:', JSON.stringify(options, null, 2));
-      console.error('===========================');
       throw new Error(`Failed to quick update site visit: ${(error as Error).message}`);
     }
   }
 
   /**
-   * Convert Firestore data to SiteVisit object
+   * Export site visits to Excel format directly from PostgreSQL
    */
-  private convertFirestoreToSiteVisit(data: any): Omit<SiteVisit, 'id'> {
-    // Merge original site photos with checkout site photos
-    const originalPhotos = (data.sitePhotos || []).map((photo: any) => ({
-      ...photo,
-      timestamp: photo.timestamp?.toDate() || new Date()
-    }));
+  async exportSiteVisitsToExcel(filters?: {
+    department?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<Buffer> {
+    try {
+      const XLSX = await import('xlsx');
+      const conditions: any[] = [];
+      if (filters?.department) conditions.push(eq(pgSiteVisits.department, filters.department));
+      if (filters?.status) conditions.push(eq(pgSiteVisits.status, filters.status));
+      if (filters?.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
+      if (filters?.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
 
-    const checkoutPhotos = (data.siteOutPhotos || []).map((photo: any) => ({
-      ...photo,
-      timestamp: photo.timestamp?.toDate() || new Date()
-    }));
+      let query = pgDb.select().from(pgSiteVisits);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
 
-    // Combine both photo arrays, with checkout photos appearing after original photos
-    const allPhotos = [...originalPhotos, ...checkoutPhotos];
+      const rows = await query.orderBy(desc(pgSiteVisits.siteInTime));
+      const siteVisits = rows.map(r => this.convertPostgresToSiteVisit(r));
 
-    return {
-      ...data,
-      siteInTime: data.siteInTime?.toDate() || new Date(),
-      siteOutTime: data.siteOutTime?.toDate() || undefined,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-      // Convert outcome-related timestamps to Date objects - handle different data types
-      scheduledFollowUpDate: data.scheduledFollowUpDate ?
-        (typeof data.scheduledFollowUpDate?.toDate === 'function' ?
-          data.scheduledFollowUpDate.toDate() :
-          data.scheduledFollowUpDate) : undefined,
-      outcomeSelectedAt: data.outcomeSelectedAt ?
-        (typeof data.outcomeSelectedAt?.toDate === 'function' ?
-          data.outcomeSelectedAt.toDate() :
-          data.outcomeSelectedAt) : undefined,
-      sitePhotos: allPhotos,
-      // Keep the original siteOutPhotos field for reference
-      siteOutPhotos: checkoutPhotos
-    };
+      const excelData = siteVisits.map((visit: any) => {
+        const baseData: any = {
+          'Visit ID': visit.id,
+          'Employee Name': visit.userId,
+          'Department': visit.department,
+          'Customer Name': (visit as any).customer?.name || (visit as any).customerDetails?.name || 'N/A',
+          'Customer Phone': (visit as any).customer?.phone || (visit as any).customer?.mobile || 'N/A',
+          'Customer Email': (visit as any).customer?.email || 'N/A',
+          'Customer Source': (visit as any).customer?.source || 'N/A',
+          'Visit Purpose': visit.visitPurpose,
+          'Status': visit.status,
+          'Visit Outcome': visit.visitOutcome || 'N/A',
+          'Check-in Time': visit.siteInTime?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) || 'N/A',
+          'Check-in Location': visit.location?.address || 'N/A',
+          'Check-out Time': visit.siteOutTime ? visit.siteOutTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not checked out',
+          'Notes': visit.notes || 'N/A',
+          'Photos Count': visit.sitePhotos?.length || 0,
+          'Created At': visit.createdAt?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) || 'N/A'
+        };
+
+        if (visit.marketingData) {
+          const config = visit.marketingData.onGridConfig || visit.marketingData.offGridConfig ||
+            visit.marketingData.hybridConfig || visit.marketingData.waterPumpConfig;
+          if (config) {
+            baseData['Panel Watts'] = config.panelWatts || 'N/A';
+            baseData['Inverter KW'] = config.inverterKW || 'N/A';
+            baseData['Project Value'] = config.projectValue || 'N/A';
+          }
+        }
+        return baseData;
+      });
+
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Site Visits');
+      return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    } catch (error) {
+      console.error('Error exporting site visits to Excel:', error);
+      throw new Error('Failed to export site visits to Excel');
+    }
+  }
+
+  /**
+   * Helper alias for getting all site visits
+   */
+  async getAllSiteVisits(filters: any): Promise<SiteVisit[]> {
+    return this.getSiteVisitsWithFilters(filters);
   }
 }
 

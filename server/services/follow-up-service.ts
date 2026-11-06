@@ -1,9 +1,12 @@
 /**
- * Follow-Up Site Visit Service
+ * Follow-Up Site Visit Service - Enterprise PostgreSQL-First Architecture
  * Handles follow-up visit data separately from main site visits
  */
 
-import { db } from "../firebase";
+import { db as pgDb } from "../db";
+import { followUpVisits as pgFollowUpVisits, siteVisits as pgSiteVisits } from "@shared/schema.postgres";
+import { eq, and, desc } from "drizzle-orm";
+import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   FollowUpSiteVisit,
@@ -12,122 +15,177 @@ import {
   Location,
   CustomerDetails
 } from "@shared/schema";
+import { siteVisitService } from "./site-visit-service";
+import crypto from "crypto";
 
 export class FollowUpService {
-  private collection = db.collection('followUpVisits');
-  private siteVisitsCollection = db.collection('siteVisits');
+  private collection = firestoreDb.collection('followUpVisits');
+  private siteVisitsCollection = firestoreDb.collection('siteVisits');
 
   /**
-   * Create a new follow-up visit with dynamic status management
+   * Helper to convert PostgreSQL row to standard FollowUpSiteVisit
+   */
+  private convertPostgresToFollowUp(v: any): FollowUpSiteVisit {
+    return {
+      id: v.id,
+      originalVisitId: v.originalVisitId || "",
+      userId: v.userId,
+      department: v.department as any,
+      siteInTime: v.siteInTime instanceof Date ? v.siteInTime : new Date(v.siteInTime),
+      siteInLocation: (v.siteInLocation as any) || undefined,
+      siteInPhotoUrl: v.siteInPhotoUrl || undefined,
+      siteOutTime: v.siteOutTime ? (v.siteOutTime instanceof Date ? v.siteOutTime : new Date(v.siteOutTime)) : undefined,
+      siteOutLocation: (v.siteOutLocation as any) || undefined,
+      siteOutPhotoUrl: v.siteOutPhotoUrl || undefined,
+      siteOutPhotos: (v.siteOutPhotos as any[]) || [],
+      followUpReason: (v.followUpReason as any) || "additional_work_required",
+      description: v.description,
+      sitePhotos: (v.sitePhotos as any[]) || [],
+      status: v.status as any,
+      notes: v.notes || undefined,
+      customer: v.customer as any,
+      createdAt: v.createdAt instanceof Date ? v.createdAt : new Date(v.createdAt),
+      updatedAt: v.updatedAt instanceof Date ? v.updatedAt : new Date(v.updatedAt),
+      originalCustomerStatus: (v.originalCustomerStatus as any) || undefined,
+      affectsCustomerStatus: v.affectsCustomerStatus ?? true,
+      newCustomerStatus: (v.newCustomerStatus as any) || undefined,
+      visitOutcome: (v.visitOutcome as any) || undefined,
+      outcomeNotes: v.outcomeNotes || undefined,
+      scheduledFollowUpDate: v.scheduledFollowUpDate ? (v.scheduledFollowUpDate instanceof Date ? v.scheduledFollowUpDate : new Date(v.scheduledFollowUpDate)) : undefined,
+      outcomeSelectedAt: (v as any).outcomeSelectedAt ? (v.outcomeSelectedAt instanceof Date ? v.outcomeSelectedAt : new Date(v.outcomeSelectedAt)) : undefined,
+      outcomeSelectedBy: (v as any).outcomeSelectedBy || undefined
+    };
+  }
+
+  /**
+   * Helper to convert Firestore document to FollowUpSiteVisit object
+   */
+  private convertFirestoreToFollowUp(data: any): Omit<FollowUpSiteVisit, 'id'> {
+    return {
+      originalVisitId: data.originalVisitId,
+      userId: data.userId,
+      department: data.department,
+      siteInTime: data.siteInTime?.toDate ? data.siteInTime.toDate() : (data.siteInTime instanceof Date ? data.siteInTime : new Date(data.siteInTime)),
+      siteInLocation: data.siteInLocation,
+      siteInPhotoUrl: data.siteInPhotoUrl,
+      siteOutTime: data.siteOutTime?.toDate ? data.siteOutTime.toDate() : (data.siteOutTime ? new Date(data.siteOutTime) : undefined),
+      siteOutLocation: data.siteOutLocation,
+      siteOutPhotoUrl: data.siteOutPhotoUrl,
+      siteOutPhotos: Array.isArray(data.siteOutPhotos) ? data.siteOutPhotos : [],
+      followUpReason: data.followUpReason,
+      description: data.description,
+      sitePhotos: data.sitePhotos || [],
+      status: data.status || 'in_progress',
+      notes: data.notes,
+      customer: data.customer,
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt || Date.now())),
+      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : (data.updatedAt instanceof Date ? data.updatedAt : new Date(data.updatedAt || Date.now())),
+      originalCustomerStatus: data.originalCustomerStatus,
+      affectsCustomerStatus: data.affectsCustomerStatus ?? true,
+      newCustomerStatus: data.newCustomerStatus,
+      visitOutcome: data.visitOutcome,
+      outcomeNotes: data.outcomeNotes,
+      scheduledFollowUpDate: data.scheduledFollowUpDate?.toDate ? data.scheduledFollowUpDate.toDate() : (data.scheduledFollowUpDate ? new Date(data.scheduledFollowUpDate) : undefined),
+      outcomeSelectedAt: data.outcomeSelectedAt?.toDate ? data.outcomeSelectedAt.toDate() : (data.outcomeSelectedAt ? new Date(data.outcomeSelectedAt) : undefined),
+      outcomeSelectedBy: data.outcomeSelectedBy
+    };
+  }
+
+  /**
+   * Create a new follow-up visit with dynamic status management in PostgreSQL
    */
   async createFollowUp(data: InsertFollowUpSiteVisit): Promise<FollowUpSiteVisit> {
     try {
-      // Validate data
       const validatedData = insertFollowUpSiteVisitSchema.parse(data);
 
-      // Get original visit to extract current customer status
-      const originalVisitRef = this.siteVisitsCollection.doc(validatedData.originalVisitId);
-      const originalVisitDoc = await originalVisitRef.get();
-
-      if (!originalVisitDoc.exists) {
+      // Check original visit (PostgreSQL first)
+      const originalVisit = await siteVisitService.getSiteVisitById(validatedData.originalVisitId);
+      if (!originalVisit) {
         throw new Error(`Original visit ${validatedData.originalVisitId} not found`);
       }
 
-      const originalVisitData = originalVisitDoc.data()!;
-
-      // Determine current customer status - use customerCurrentStatus if available, fallback to visitOutcome
-      const currentCustomerStatus = originalVisitData.customerCurrentStatus || originalVisitData.visitOutcome;
-
+      const currentCustomerStatus = originalVisit.customerCurrentStatus || originalVisit.visitOutcome;
       if (!currentCustomerStatus) {
         throw new Error(`Original visit ${validatedData.originalVisitId} has no customer status - cannot create follow-up`);
       }
 
-      // Enhance follow-up data with status management context
-      const enhancedData = {
-        ...validatedData,
+      const id = crypto.randomUUID();
+      const tenantId = (data as any).tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const now = new Date();
+
+      const insertValues: any = {
+        id,
+        tenantId,
+        originalVisitId: validatedData.originalVisitId,
+        userId: validatedData.userId,
+        department: validatedData.department,
+        siteInTime: validatedData.siteInTime instanceof Date ? validatedData.siteInTime : new Date(validatedData.siteInTime),
+        siteInLocation: validatedData.siteInLocation || null,
+        siteInPhotoUrl: validatedData.siteInPhotoUrl || null,
+        siteOutTime: validatedData.siteOutTime ? (validatedData.siteOutTime instanceof Date ? validatedData.siteOutTime : new Date(validatedData.siteOutTime)) : null,
+        siteOutLocation: validatedData.siteOutLocation || null,
+        siteOutPhotoUrl: validatedData.siteOutPhotoUrl || null,
+        followUpReason: validatedData.followUpReason || "additional_work_required",
+        description: validatedData.description,
         originalCustomerStatus: currentCustomerStatus,
-        affectsCustomerStatus: true
+        affectsCustomerStatus: true,
+        newCustomerStatus: validatedData.newCustomerStatus || null,
+        sitePhotos: validatedData.sitePhotos || [],
+        siteOutPhotos: validatedData.siteOutPhotos || [],
+        status: validatedData.status || "in_progress",
+        visitOutcome: validatedData.visitOutcome || null,
+        outcomeNotes: validatedData.outcomeNotes || null,
+        scheduledFollowUpDate: validatedData.scheduledFollowUpDate ? (validatedData.scheduledFollowUpDate instanceof Date ? validatedData.scheduledFollowUpDate : new Date(validatedData.scheduledFollowUpDate)) : null,
+        customer: validatedData.customer,
+        notes: validatedData.notes || null,
+        createdAt: validatedData.createdAt ? (validatedData.createdAt instanceof Date ? validatedData.createdAt : new Date(validatedData.createdAt)) : now,
+        updatedAt: validatedData.updatedAt ? (validatedData.updatedAt instanceof Date ? validatedData.updatedAt : new Date(validatedData.updatedAt)) : now
       };
 
-      // Convert dates to Firestore timestamps
-      const firestoreData: any = {
-        ...enhancedData,
-        siteInTime: Timestamp.fromDate(enhancedData.siteInTime),
-        siteOutTime: enhancedData.siteOutTime ? Timestamp.fromDate(enhancedData.siteOutTime) : null,
-        createdAt: Timestamp.fromDate(enhancedData.createdAt || new Date()),
-        updatedAt: Timestamp.fromDate(enhancedData.updatedAt || new Date())
-      };
+      const [created] = await pgDb.insert(pgFollowUpVisits).values(insertValues).returning();
 
-      // Remove undefined values to prevent Firestore errors
-      Object.keys(firestoreData).forEach(key => {
-        if (firestoreData[key] === undefined) {
-          delete firestoreData[key];
-        }
+      // Update original visit in PostgreSQL
+      const currentCount = originalVisit.followUpCount || 0;
+      await siteVisitService.updateSiteVisit(validatedData.originalVisitId, {
+        followUpCount: currentCount + 1,
+        hasFollowUps: true,
+        customerCurrentStatus: "on_process",
+        lastActivityType: "follow_up",
+        lastActivityDate: now,
+        activeFollowUpId: id
       });
 
-      // Create the follow-up document
-      const docRef = await this.collection.add(firestoreData);
+      // Dual-write to Firestore in background
+      (async () => {
+        try {
+          const firestoreData: any = {
+            ...insertValues,
+            siteInTime: Timestamp.fromDate(insertValues.siteInTime),
+            siteOutTime: insertValues.siteOutTime ? Timestamp.fromDate(insertValues.siteOutTime) : null,
+            createdAt: Timestamp.fromDate(insertValues.createdAt),
+            updatedAt: Timestamp.fromDate(insertValues.updatedAt)
+          };
+          Object.keys(firestoreData).forEach(k => firestoreData[k] === undefined && delete firestoreData[k]);
+          await this.collection.doc(id).set(firestoreData);
 
-      // Dual write to Neon PostgreSQL
-      try {
-        const { db: pgDb } = await import("../db");
-        const { followUpVisits } = await import("@shared/schema.postgres");
-        await pgDb.insert(followUpVisits).values({
-          id: docRef.id,
-          tenantId: "adc11a73-7ef8-417b-b930-28d1d855d707",
-          originalVisitId: validatedData.originalVisitId,
-          userId: validatedData.userId,
-          department: validatedData.department,
-          siteInTime: validatedData.siteInTime,
-          siteInLocation: validatedData.siteInLocation || null,
-          siteInPhotoUrl: validatedData.siteInPhotoUrl || null,
-          siteOutTime: validatedData.siteOutTime || null,
-          siteOutLocation: validatedData.siteOutLocation || null,
-          siteOutPhotoUrl: validatedData.siteOutPhotoUrl || null,
-          followUpReason: validatedData.followUpReason || "additional_work_required",
-          description: validatedData.description,
-          originalCustomerStatus: currentCustomerStatus,
-          affectsCustomerStatus: true,
-          sitePhotos: validatedData.sitePhotos || [],
-          siteOutPhotos: validatedData.siteOutPhotos || [],
-          status: validatedData.status || "in_progress",
-          customer: validatedData.customer,
-          notes: validatedData.notes || null
-        });
-      } catch (pgErr) {
-        console.warn("[FollowUpService] Neon Postgres sync warning:", pgErr);
-      }
+          // Update original visit doc in Firestore
+          await this.siteVisitsCollection.doc(validatedData.originalVisitId).set({
+            followUpCount: currentCount + 1,
+            hasFollowUps: true,
+            customerCurrentStatus: "on_process",
+            lastActivityType: "follow_up",
+            lastActivityDate: Timestamp.fromDate(now),
+            activeFollowUpId: id,
+            updatedAt: Timestamp.fromDate(now)
+          }, { merge: true });
+        } catch (err) {
+          console.warn("[FollowUpService] Firestore sync warning:", err);
+        }
+      })();
 
-      // Update the original visit with dynamic status management
-      try {
-        const currentCount = originalVisitData.followUpCount || 0;
-        const updateData = {
-          followUpCount: currentCount + 1,
-          hasFollowUps: true,
-          // Dynamic Status Management - Move customer to "on_process" during follow-up
-          customerCurrentStatus: "on_process",
-          lastActivityType: "follow_up",
-          lastActivityDate: Timestamp.fromDate(new Date()),
-          activeFollowUpId: docRef.id,
-          updatedAt: Timestamp.fromDate(new Date())
-        };
-
-        await originalVisitRef.update(updateData);
-      } catch (error) {
-        console.error("FOLLOW_UP_SERVICE: Error updating original visit with status management:", error);
-        // Clean up the created follow-up if original visit update fails
-        await docRef.delete();
-        throw new Error('Failed to update original visit status - follow-up creation aborted');
-      }
-
-      const result = {
-        id: docRef.id,
-        ...this.convertFirestoreToFollowUp(firestoreData)
-      };
-
-      return result;
+      return this.convertPostgresToFollowUp(created);
     } catch (error) {
-      console.error('FOLLOW_UP_SERVICE: Error creating follow-up with status management:', error);
+      console.error('FOLLOW_UP_SERVICE: Error creating follow-up:', error);
       throw new Error(`Failed to create follow-up visit: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -137,193 +195,96 @@ export class FollowUpService {
    */
   async updateFollowUp(id: string, updates: Partial<InsertFollowUpSiteVisit>): Promise<FollowUpSiteVisit> {
     try {
-      const docRef = this.collection.doc(id);
+      const now = new Date();
+      const pgUpdates: any = { updatedAt: now };
 
-      // Get current follow-up data to access original visit info
-      const currentFollowUpDoc = await docRef.get();
-      if (!currentFollowUpDoc.exists) {
+      if (updates.siteOutTime !== undefined) pgUpdates.siteOutTime = updates.siteOutTime ? (updates.siteOutTime instanceof Date ? updates.siteOutTime : new Date(updates.siteOutTime)) : null;
+      if (updates.siteOutLocation !== undefined) pgUpdates.siteOutLocation = updates.siteOutLocation;
+      if (updates.siteOutPhotoUrl !== undefined) pgUpdates.siteOutPhotoUrl = updates.siteOutPhotoUrl;
+      if (updates.siteOutPhotos !== undefined) pgUpdates.siteOutPhotos = updates.siteOutPhotos;
+      if (updates.sitePhotos !== undefined) pgUpdates.sitePhotos = updates.sitePhotos;
+      if (updates.status !== undefined) pgUpdates.status = updates.status;
+      if (updates.visitOutcome !== undefined) pgUpdates.visitOutcome = updates.visitOutcome;
+      if (updates.outcomeNotes !== undefined) pgUpdates.outcomeNotes = updates.outcomeNotes;
+      if (updates.scheduledFollowUpDate !== undefined) pgUpdates.scheduledFollowUpDate = updates.scheduledFollowUpDate ? (updates.scheduledFollowUpDate instanceof Date ? updates.scheduledFollowUpDate : new Date(updates.scheduledFollowUpDate)) : null;
+      if (updates.notes !== undefined) pgUpdates.notes = updates.notes;
+
+      // Handle visit outcome completion status transition
+      if (updates.visitOutcome && updates.status === 'completed') {
+        let newCustomerStatus: "converted" | "on_process" | "cancelled";
+        switch (updates.visitOutcome) {
+          case "completed": newCustomerStatus = "converted"; break;
+          case "on_process": newCustomerStatus = "on_process"; break;
+          case "cancelled": newCustomerStatus = "cancelled"; break;
+          default: throw new Error(`Invalid follow-up outcome: ${updates.visitOutcome}`);
+        }
+        pgUpdates.newCustomerStatus = newCustomerStatus;
+      }
+
+      const [updated] = await pgDb.update(pgFollowUpVisits).set(pgUpdates).where(eq(pgFollowUpVisits.id, id)).returning();
+
+      if (!updated) {
         throw new Error(`Follow-up ${id} not found`);
       }
 
-      const currentFollowUpData = currentFollowUpDoc.data()!;
-      const originalVisitId = currentFollowUpData.originalVisitId;
-
-      // Convert dates to Firestore timestamps in updates
-      const firestoreUpdates: any = {
-        ...updates,
-        updatedAt: Timestamp.fromDate(new Date())
-      };
-
-      if (updates.siteOutTime) {
-        firestoreUpdates.siteOutTime = Timestamp.fromDate(updates.siteOutTime);
+      // If status changed to completed and we have an originalVisitId, update the original visit
+      if (pgUpdates.newCustomerStatus && updated.originalVisitId) {
+        await siteVisitService.updateSiteVisit(updated.originalVisitId, {
+          customerCurrentStatus: pgUpdates.newCustomerStatus,
+          lastActivityType: "follow_up",
+          lastActivityDate: now,
+          activeFollowUpId: null as any
+        });
       }
 
-      // Handle visit outcome completion with status transition logic
-      if (updates.visitOutcome && updates.status === 'completed') {
-        // Map follow-up outcome to customer status
-        let newCustomerStatus: "converted" | "on_process" | "cancelled";
-        switch (updates.visitOutcome) {
-          case "completed":
-            newCustomerStatus = "converted";
-            break;
-          case "on_process":
-            newCustomerStatus = "on_process";
-            break;
-          case "cancelled":
-            newCustomerStatus = "cancelled";
-            break;
-          default:
-            throw new Error(`Invalid follow-up outcome: ${updates.visitOutcome}`);
-        }
-
-        // Store the new customer status in the follow-up
-        firestoreUpdates.newCustomerStatus = newCustomerStatus;
-
-        // Update original visit with the new customer status
+      // Replicate to Firestore in background
+      (async () => {
         try {
-          const originalVisitRef = this.siteVisitsCollection.doc(originalVisitId);
-          const originalVisitDoc = await originalVisitRef.get();
+          const docRef = this.collection.doc(id);
+          const firestoreUpdates: any = {
+            ...updates,
+            updatedAt: Timestamp.fromDate(now)
+          };
+          if (updates.siteOutTime) firestoreUpdates.siteOutTime = Timestamp.fromDate(new Date(updates.siteOutTime));
+          if (updates.scheduledFollowUpDate) firestoreUpdates.scheduledFollowUpDate = Timestamp.fromDate(new Date(updates.scheduledFollowUpDate));
+          if (pgUpdates.newCustomerStatus) firestoreUpdates.newCustomerStatus = pgUpdates.newCustomerStatus;
+          Object.keys(firestoreUpdates).forEach(k => firestoreUpdates[k] === undefined && delete firestoreUpdates[k]);
+          await docRef.set(firestoreUpdates, { merge: true });
 
-          if (originalVisitDoc.exists) {
-            const originalUpdateData = {
-              // Update dynamic status based on follow-up outcome
-              customerCurrentStatus: newCustomerStatus,
+          if (pgUpdates.newCustomerStatus && updated.originalVisitId) {
+            await this.siteVisitsCollection.doc(updated.originalVisitId).set({
+              customerCurrentStatus: pgUpdates.newCustomerStatus,
               lastActivityType: "follow_up",
-              lastActivityDate: Timestamp.fromDate(new Date()),
-              activeFollowUpId: null, // Clear active follow-up
-              updatedAt: Timestamp.fromDate(new Date())
-            };
-
-            await originalVisitRef.update(originalUpdateData);
-          } else {
-            console.error("FOLLOW_UP_SERVICE: Original visit not found for status update:", originalVisitId);
+              lastActivityDate: Timestamp.fromDate(now),
+              activeFollowUpId: null,
+              updatedAt: Timestamp.fromDate(now)
+            }, { merge: true });
           }
-        } catch (error) {
-          console.error("FOLLOW_UP_SERVICE: Error updating original visit with follow-up outcome:", error);
-          // Continue with follow-up update even if original visit update fails
+        } catch (err) {
+          console.warn("[FollowUpService] Firestore async update warning:", err);
         }
-      }
+      })();
 
-      // Handle siteOutPhotos - FIXED: Ensure proper URL string storage
-      if (updates.siteOutPhotos && Array.isArray(updates.siteOutPhotos)) {
-        // Always convert to simple string array to prevent corruption
-        firestoreUpdates.siteOutPhotos = updates.siteOutPhotos.map((photo: any) => {
-          if (typeof photo === 'string') {
-            return photo; // Already a string URL
-          } else if (photo && typeof photo === 'object' && photo.url) {
-            return photo.url; // Extract URL from photo object
-          } else {
-            console.warn('FOLLOW_UP_SERVICE: Invalid photo format, skipping:', photo);
-            return null;
-          }
-        }).filter(Boolean); // Remove null/undefined values
-
-        // Additional validation to ensure all are strings
-        const allStrings = firestoreUpdates.siteOutPhotos.every((url: any) => typeof url === 'string');
-        if (!allStrings) {
-          console.error("FOLLOW_UP_SERVICE: ERROR - Not all photo URLs are strings, forcing conversion");
-          firestoreUpdates.siteOutPhotos = firestoreUpdates.siteOutPhotos.map((url: any) => String(url));
-        }
-      }
-
-      // Remove undefined values to prevent Firestore errors
-      Object.keys(firestoreUpdates).forEach(key => {
-        if (firestoreUpdates[key] === undefined) {
-          delete firestoreUpdates[key];
-        }
-      });
-
-      await docRef.update(firestoreUpdates);
-
-      // Update in Neon PostgreSQL
-      try {
-        const { db: pgDb } = await import("../db");
-        const { followUpVisits } = await import("@shared/schema.postgres");
-        const { eq } = await import("drizzle-orm");
-        const pgUpdates: any = { updatedAt: new Date() };
-        if (updates.siteOutTime) pgUpdates.siteOutTime = new Date(updates.siteOutTime);
-        if (updates.siteOutLocation) pgUpdates.siteOutLocation = updates.siteOutLocation;
-        if (updates.siteOutPhotoUrl) pgUpdates.siteOutPhotoUrl = updates.siteOutPhotoUrl;
-        if (updates.status) pgUpdates.status = updates.status;
-        if (updates.visitOutcome) pgUpdates.visitOutcome = updates.visitOutcome;
-        if (updates.outcomeNotes) pgUpdates.outcomeNotes = updates.outcomeNotes;
-        if (updates.scheduledFollowUpDate) pgUpdates.scheduledFollowUpDate = new Date(updates.scheduledFollowUpDate);
-        if (updates.notes) pgUpdates.notes = updates.notes;
-        await pgDb.update(followUpVisits).set(pgUpdates).where(eq(followUpVisits.id, id));
-      } catch (pgErr) {
-        console.warn("[FollowUpService] Neon Postgres update warning:", pgErr);
-      }
-
-      const updatedDoc = await docRef.get();
-      if (!updatedDoc.exists) {
-        throw new Error('Follow-up visit not found after update');
-      }
-
-      const result = {
-        id: updatedDoc.id,
-        ...this.convertFirestoreToFollowUp(updatedDoc.data()!)
-      };
-
-      return result;
+      return this.convertPostgresToFollowUp(updated);
     } catch (error) {
-      console.error('FOLLOW_UP_SERVICE: Error updating follow-up with status management:', error);
+      console.error('FOLLOW_UP_SERVICE: Error updating follow-up:', error);
       throw new Error(`Failed to update follow-up visit: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Get follow-up by ID
+   * Get follow-up by ID (PostgreSQL first, Firestore fallback)
    */
   async getFollowUpById(id: string): Promise<FollowUpSiteVisit | null> {
     try {
-      // Check Neon PostgreSQL first
-      try {
-        const { db: pgDb } = await import("../db");
-        const { followUpVisits } = await import("@shared/schema.postgres");
-        const { eq } = await import("drizzle-orm");
-        const [v] = await pgDb.select().from(followUpVisits).where(eq(followUpVisits.id, id)).limit(1);
-        if (v) {
-          return {
-            id: v.id,
-            originalVisitId: v.originalVisitId || "",
-            userId: v.userId,
-            department: v.department as any,
-            siteInTime: v.siteInTime,
-            siteInLocation: (v.siteInLocation as any) || undefined,
-            siteInPhotoUrl: v.siteInPhotoUrl || undefined,
-            siteOutTime: v.siteOutTime || undefined,
-            siteOutLocation: (v.siteOutLocation as any) || undefined,
-            siteOutPhotoUrl: v.siteOutPhotoUrl || undefined,
-            followUpReason: (v.followUpReason as any) || "additional_work_required",
-            description: v.description,
-            originalCustomerStatus: (v.originalCustomerStatus as any) || undefined,
-            affectsCustomerStatus: v.affectsCustomerStatus ?? true,
-            newCustomerStatus: (v.newCustomerStatus as any) || undefined,
-            sitePhotos: (v.sitePhotos as any[]) || [],
-            siteOutPhotos: (v.siteOutPhotos as any[]) || [],
-            status: v.status as any,
-            visitOutcome: (v.visitOutcome as any) || undefined,
-            outcomeNotes: v.outcomeNotes || undefined,
-            scheduledFollowUpDate: v.scheduledFollowUpDate || undefined,
-            customer: v.customer as any,
-            notes: v.notes || undefined,
-            createdAt: v.createdAt,
-            updatedAt: v.updatedAt
-          } as FollowUpSiteVisit;
-        }
-      } catch (pgErr) {
-        // Fallback to Firestore
+      const [v] = await pgDb.select().from(pgFollowUpVisits).where(eq(pgFollowUpVisits.id, id)).limit(1);
+      if (v) {
+        return this.convertPostgresToFollowUp(v);
       }
 
       const doc = await this.collection.doc(id).get();
-      if (!doc.exists) {
-        return null;
-      }
-
-      return {
-        id: doc.id,
-        ...this.convertFirestoreToFollowUp(doc.data()!)
-      };
+      if (!doc.exists) return null;
+      return { id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()!) };
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-up:', error);
       return null;
@@ -335,47 +296,35 @@ export class FollowUpService {
    */
   async getFollowUpsByOriginalVisit(originalVisitId: string): Promise<FollowUpSiteVisit[]> {
     try {
-      const snapshot = await this.collection
-        .where('originalVisitId', '==', originalVisitId)
-        .get();
+      const rows = await pgDb.select()
+        .from(pgFollowUpVisits)
+        .where(eq(pgFollowUpVisits.originalVisitId, originalVisitId))
+        .orderBy(desc(pgFollowUpVisits.createdAt));
 
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToFollowUp(doc.data())
-      }));
-
-      return docs.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-        return bTime - aTime; // Most recent first
-      });
+      return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-ups for original visit:', error);
-      return [];
+      const snapshot = await this.collection.where('originalVisitId', '==', originalVisitId).get();
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }));
+      return docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
   }
 
   /**
-   * Get ALL follow-ups (for admin/monitoring purposes)
+   * Get ALL follow-ups (for admin/monitoring)
    */
   async getAllFollowUps(): Promise<FollowUpSiteVisit[]> {
     try {
-      // Fetch ALL follow-ups without userId filter (for admin monitoring)
-      const snapshot = await this.collection.get();
+      const rows = await pgDb.select()
+        .from(pgFollowUpVisits)
+        .orderBy(desc(pgFollowUpVisits.createdAt));
 
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToFollowUp(doc.data())
-      }));
-
-      return docs.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-        return bTime - aTime; // Most recent first
-      });
+      return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting all follow-ups:', error);
-      return [];
+      const snapshot = await this.collection.get();
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }));
+      return docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
   }
 
@@ -388,96 +337,28 @@ export class FollowUpService {
     status?: string
   ): Promise<FollowUpSiteVisit[]> {
     try {
-      // Simple query to avoid index issues
-      const snapshot = await this.collection.where('userId', '==', userId).get();
+      const conditions: any[] = [eq(pgFollowUpVisits.userId, userId)];
+      if (department) conditions.push(eq(pgFollowUpVisits.department, department));
+      if (status) conditions.push(eq(pgFollowUpVisits.status, status));
 
-      // Filter and map in memory
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFirestoreToFollowUp(doc.data())
-      })).filter(doc => {
-        // Apply additional filters in memory
-        if (department && doc.department !== department) return false;
-        if (status && doc.status !== status) return false;
-        return true;
-      });
+      const rows = await pgDb.select()
+        .from(pgFollowUpVisits)
+        .where(and(...conditions))
+        .orderBy(desc(pgFollowUpVisits.createdAt));
 
-      return docs.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-        return bTime - aTime; // Most recent first
-      });
+      return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-ups by user:', error);
-      return [];
+      const snapshot = await this.collection.where('userId', '==', userId).get();
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }))
+        .filter(doc => {
+          if (department && doc.department !== department) return false;
+          if (status && doc.status !== status) return false;
+          return true;
+        });
+      return docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
-  }
-
-  /**
-   * Helper method to convert siteOutPhotos from Firestore format
-   * FIXED: Handle both string arrays and complex photo objects
-   */
-  private convertSiteOutPhotos(siteOutPhotos: any): any[] {
-    if (!Array.isArray(siteOutPhotos)) {
-      return [];
-    }
-
-    // For follow-ups, siteOutPhotos are stored as simple string URLs
-    // For regular site visits, they might be complex objects
-    return siteOutPhotos.map((photo: any) => {
-      if (typeof photo === 'string') {
-        // Simple string URL format - return as-is for follow-ups
-        return photo;
-      } else if (photo && typeof photo === 'object') {
-        // Complex photo object format - convert timestamp
-        return {
-          ...photo,
-          timestamp: photo.timestamp?.toDate ? photo.timestamp.toDate() : new Date(photo.timestamp || Date.now())
-        };
-      } else {
-        // Invalid format - return empty string or skip
-        console.warn('FOLLOW_UP_SERVICE: Invalid siteOutPhotos format:', photo);
-        return null;
-      }
-    }).filter(Boolean); // Remove any null values
-  }
-
-  /**
-   * Convert Firestore document to FollowUpSiteVisit object
-   */
-  private convertFirestoreToFollowUp(data: any): Omit<FollowUpSiteVisit, 'id'> {
-    return {
-      originalVisitId: data.originalVisitId,
-      userId: data.userId,
-      department: data.department,
-      siteInTime: data.siteInTime?.toDate() || new Date(),
-      siteInLocation: data.siteInLocation,
-      siteInPhotoUrl: data.siteInPhotoUrl,
-      siteOutTime: data.siteOutTime?.toDate() || undefined,
-      siteOutLocation: data.siteOutLocation,
-      siteOutPhotoUrl: data.siteOutPhotoUrl,
-      siteOutPhotos: this.convertSiteOutPhotos(data.siteOutPhotos || []),
-      followUpReason: data.followUpReason,
-      description: data.description,
-      sitePhotos: data.sitePhotos || [],
-      status: data.status || 'in_progress',
-      notes: data.notes,
-      customer: data.customer,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-
-      // Dynamic Status Management fields
-      originalCustomerStatus: data.originalCustomerStatus,
-      affectsCustomerStatus: data.affectsCustomerStatus ?? true,
-      newCustomerStatus: data.newCustomerStatus,
-
-      // Optional visit outcome fields
-      visitOutcome: data.visitOutcome,
-      outcomeNotes: data.outcomeNotes,
-      scheduledFollowUpDate: data.scheduledFollowUpDate?.toDate(),
-      outcomeSelectedAt: data.outcomeSelectedAt?.toDate(),
-      outcomeSelectedBy: data.outcomeSelectedBy
-    };
   }
 }
 

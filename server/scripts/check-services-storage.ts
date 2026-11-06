@@ -1,32 +1,20 @@
 import fs from 'fs';
 import path from 'path';
 
-const servicesDir = 'server/services';
-const files = fs.readdirSync(servicesDir).filter(f => f.endsWith('.ts'));
+const servicesDir = './server/services';
+const files = fs.readdirSync(servicesDir);
 
-const storageCalls = new Set<string>();
-const callRegex = /storage\.([a-zA-Z0-9_]+)\s*\(/g;
+console.log("Analyzing services in server/services...");
 
 for (const file of files) {
-  const content = fs.readFileSync(path.join(servicesDir, file), 'utf-8');
-  let match;
-  while ((match = callRegex.exec(content)) !== null) {
-    storageCalls.add(match[1]);
-  }
-}
+  if (!file.endsWith('.ts')) continue;
+  const filePath = path.join(servicesDir, file);
+  const content = fs.readFileSync(filePath, 'utf-8');
+  
+  const hasFirestoreImport = content.includes('firebase') || content.includes('firestore');
+  const hasCollection = content.includes('.collection(');
+  const hasStorageImport = content.includes('../storage') || content.includes('./storage');
+  const hasPgDb = content.includes('../db') || content.includes('schema.postgres');
 
-const pgContent = fs.readFileSync('server/storage-postgres.ts', 'utf-8');
-const pgMethods = new Set<string>();
-const pgRegex = /async\s+([a-zA-Z0-9_]+)\s*\(/g;
-let match;
-while ((match = pgRegex.exec(pgContent)) !== null) {
-  pgMethods.add(match[1]);
+  console.log(`[${file}] -> Firestore: ${hasFirestoreImport}, .collection(): ${hasCollection}, storage: ${hasStorageImport}, Postgres: ${hasPgDb}`);
 }
-
-console.log('--- CALLS IN SERVICES/*.TS THAT ARE MISSING IN POSTGRES STORAGE ---');
-const missingInPg = Array.from(storageCalls).filter(m => !pgMethods.has(m)).sort();
-console.log(`Total missing in services: ${missingInPg.length}`);
-for (const m of missingInPg) {
-  console.log(`- ${m}`);
-}
-
