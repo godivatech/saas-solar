@@ -528,6 +528,7 @@ export const fixedHolidays = pgTable("fixed_holidays", {
   type: varchar("type", { length: 50 }).default("mandatory"),
   isPaid: boolean("is_paid").default(true),
   isOptional: boolean("is_optional").default(false),
+  allowOT: boolean("allow_ot").default(false),
   applicableDepartments: jsonb("applicable_departments").default([]),
   description: text("description"),
   createdBy: varchar("created_by", { length: 128 }),

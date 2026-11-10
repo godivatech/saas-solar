@@ -36,3 +36,4 @@ console.log(`Found ${unchecked.length} routes without explicit role/permission c
 unchecked.forEach(m => {
   console.log(`Line ${m.line}: ${m.method} ${m.path} (Auth: ${m.hasVerifyAuth})`);
 });
+

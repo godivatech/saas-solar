@@ -71,8 +71,11 @@ export class HolidayService {
         adminId: string
     ): Promise<{ success: boolean; message: string; id?: string }> {
         try {
+            // Normalize date to UTC midnight for consistent querying & storage
+            const normalizedDate = getUTCMidnight(holiday.date);
+
             // Check if holiday already exists for this date
-            const existing = await storage.getHolidaysByDate(holiday.date);
+            const existing = await storage.getHolidaysByDate(normalizedDate);
             if (existing.length > 0) {
                 return {
                     success: false,
@@ -82,26 +85,28 @@ export class HolidayService {
 
             // Generate ID
             const tenantPrefix = getActiveTenantId() ? `${getActiveTenantId()}_` : '';
-            const dateStr = holiday.date.toISOString().split('T')[0].replace(/-/g, '');
+            const dateStr = normalizedDate.toISOString().split('T')[0].replace(/-/g, '');
             const id = `${tenantPrefix}holiday_${dateStr}`;
 
             // Create holiday
             const newHoliday: Holiday = {
                 ...holiday,
+                date: normalizedDate,
                 id,
                 createdBy: adminId,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
 
-            await storage.createHoliday(newHoliday);
+            const created = await storage.createHoliday(newHoliday);
+            const actualId = (created as any)?.id || id;
 
             // Log activity
             await storage.createActivityLog({
                 type: 'holiday',
                 title: 'Holiday Created',
                 description: `${holiday.name} created`,
-                entityId: id,
+                entityId: actualId,
                 entityType: 'holiday',
                 userId: adminId
             });
@@ -109,7 +114,7 @@ export class HolidayService {
             return {
                 success: true,
                 message: 'Holiday created successfully',
-                id
+                id: actualId
             };
 
         } catch (error) {
@@ -132,10 +137,17 @@ export class HolidayService {
     ): Promise<{ success: boolean; message: string }> {
         try {
             // Update holiday
-            await storage.updateHoliday(id, {
+            const updated = await storage.updateHoliday(id, {
                 ...updates,
                 updatedAt: new Date()
             });
+
+            if (!updated) {
+                return {
+                    success: false,
+                    message: 'Holiday not found or access denied'
+                };
+            }
 
             // Log activity
             await storage.createActivityLog({
@@ -152,11 +164,11 @@ export class HolidayService {
                 message: 'Holiday updated successfully'
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating holiday:', error);
             return {
                 success: false,
-                message: 'Failed to update holiday'
+                message: error.message || 'Failed to update holiday'
             };
         }
     }
@@ -170,10 +182,13 @@ export class HolidayService {
         adminId: string
     ): Promise<{ success: boolean; message: string }> {
         try {
-            await storage.updateHoliday(id, {
-                isActive: false,
-                updatedAt: new Date()
-            });
+            const success = await storage.deleteHoliday(id);
+            if (!success) {
+                return {
+                    success: false,
+                    message: 'Holiday not found or access denied'
+                };
+            }
 
             // Log activity
             await storage.createActivityLog({

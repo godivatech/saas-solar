@@ -5762,8 +5762,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Fixed Holidays Routes
   app.get("/api/holidays", verifyAuth, async (req, res) => {
     try {
-      const { year } = req.query;
-      const holidays = await storage.listFixedHolidays(year ? parseInt(year as string) : undefined);
+      const { year, month } = req.query;
+      let holidays = await storage.listFixedHolidays(year ? parseInt(year as string) : undefined);
+      if (month) {
+        const monthNum = parseInt(month as string);
+        if (!isNaN(monthNum)) {
+          holidays = holidays.filter(h => new Date(h.date).getMonth() + 1 === monthNum);
+        }
+      }
       res.json({ success: true, holidays });
     } catch (error) {
       console.error("Error fetching holidays:", error);

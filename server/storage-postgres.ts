@@ -3841,7 +3841,7 @@ async getLeave(id: string): Promise<any | undefined> {
       type: h.type as any,
       isPaid: h.isPaid ?? true,
       isOptional: h.isOptional ?? false,
-      allowOT: (h as any).allowOT ?? false,
+      allowOT: h.allowOT ?? false,
       applicableDepartments: (h.applicableDepartments as string[]) || [],
       description: h.description || undefined,
       notes: h.description || undefined,
@@ -3861,6 +3861,17 @@ async getLeave(id: string): Promise<any | undefined> {
         .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
         .limit(1);
       if (h) return this.mapFixedHoliday(h);
+
+      // Verify if holiday belongs to another tenant in Postgres
+      const [otherTenantHoliday] = await pgDb
+        .select({ id: pgFixedHolidays.id })
+        .from(pgFixedHolidays)
+        .where(eq(pgFixedHolidays.id, id))
+        .limit(1);
+
+      if (otherTenantHoliday) {
+        return undefined;
+      }
     } catch (e) {
       console.error("[PostgresStorage] getFixedHoliday error:", e);
     }
@@ -3869,10 +3880,10 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async createFixedHoliday(data: any): Promise<FixedHoliday> {
     try {
-      const tenantId = await this.getTenantId();
+      const tenantId = data.tenantId || (await this.getTenantId());
       const dateObj = data.date instanceof Date ? data.date : new Date(data.date);
       const year = Number(data.year) || dateObj.getFullYear();
-      const [h] = await pgDb.insert(pgFixedHolidays).values({
+      const insertValues: any = {
         tenantId,
         name: data.name,
         date: dateObj,
@@ -3880,11 +3891,15 @@ async getLeave(id: string): Promise<any | undefined> {
         type: data.type || "mandatory",
         isPaid: data.isPaid ?? true,
         isOptional: data.isOptional ?? false,
+        allowOT: data.allowOT !== undefined ? Boolean(data.allowOT) : false,
         applicableDepartments: data.applicableDepartments || [],
         description: data.description || data.notes || null,
         createdBy: data.createdBy || null,
         isActive: data.isActive !== undefined ? Boolean(data.isActive) : true
-      }).returning();
+      };
+      if (data.id) insertValues.id = data.id;
+
+      const [h] = await pgDb.insert(pgFixedHolidays).values(insertValues).returning();
 
       try { await this.fallback.createFixedHoliday(data); } catch (_) {}
       return this.mapFixedHoliday(h);
@@ -3908,6 +3923,7 @@ async getLeave(id: string): Promise<any | undefined> {
       if (data.type !== undefined) updateValues.type = data.type;
       if (data.isPaid !== undefined) updateValues.isPaid = Boolean(data.isPaid);
       if (data.isOptional !== undefined) updateValues.isOptional = Boolean(data.isOptional);
+      if (data.allowOT !== undefined) updateValues.allowOT = Boolean(data.allowOT);
       if (data.applicableDepartments !== undefined) updateValues.applicableDepartments = data.applicableDepartments;
       if (data.description !== undefined) updateValues.description = data.description;
       if (data.notes !== undefined) updateValues.description = data.notes;
@@ -3919,10 +3935,24 @@ async getLeave(id: string): Promise<any | undefined> {
         .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
         .returning();
 
-      try { await this.fallback.updateFixedHoliday(id, data); } catch (_) {}
-      if (h) return this.mapFixedHoliday(h);
+      if (h) {
+        try { await this.fallback.updateFixedHoliday(id, data); } catch (_) {}
+        return this.mapFixedHoliday(h);
+      }
+
+      // Check if holiday belongs to another tenant in Postgres
+      const [otherTenantHoliday] = await pgDb
+        .select({ id: pgFixedHolidays.id })
+        .from(pgFixedHolidays)
+        .where(eq(pgFixedHolidays.id, id))
+        .limit(1);
+
+      if (otherTenantHoliday) {
+        throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+      }
     } catch (e) {
       console.error("[PostgresStorage] updateFixedHoliday error:", e);
+      throw e;
     }
     return this.fallback.updateFixedHoliday(id, data);
   }
@@ -3935,11 +3965,14 @@ async getLeave(id: string): Promise<any | undefined> {
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
         .returning();
-      try { await this.fallback.deleteFixedHoliday(id); } catch (_) {}
-      return Boolean(h);
+      if (h) {
+        try { await this.fallback.deleteFixedHoliday(id); } catch (_) {}
+        return true;
+      }
+      return false;
     } catch (e) {
       console.error("[PostgresStorage] deleteFixedHoliday error:", e);
-      return this.fallback.deleteFixedHoliday(id);
+      return false;
     }
   }
 
@@ -3999,9 +4032,13 @@ async getLeave(id: string): Promise<any | undefined> {
     try {
       const tenantId = await this.getTenantId();
       const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
+      start.setUTCHours(0, 0, 0, 0);
       const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
+      end.setUTCHours(23, 59, 59, 999);
+
+      // Account for timezone variance (±14 hours) across UTC/IST
+      const queryStart = new Date(start.getTime() - 14 * 60 * 60 * 1000);
+      const queryEnd = new Date(end.getTime() + 14 * 60 * 60 * 1000);
 
       const rows = await pgDb
         .select()
@@ -4010,11 +4047,22 @@ async getLeave(id: string): Promise<any | undefined> {
           and(
             eq(pgFixedHolidays.tenantId, tenantId),
             eq(pgFixedHolidays.isActive, true),
-            gte(pgFixedHolidays.date, start),
-            lte(pgFixedHolidays.date, end)
+            gte(pgFixedHolidays.date, queryStart),
+            lte(pgFixedHolidays.date, queryEnd)
           )
         );
-      return rows.map(h => this.mapFixedHoliday(h));
+
+      const targetUtcStr = date.toISOString().split('T')[0];
+      const targetLocalStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+      const matched = rows.filter(h => {
+        const hDate = new Date(h.date);
+        const hUtcStr = hDate.toISOString().split('T')[0];
+        const hLocalStr = `${hDate.getFullYear()}-${String(hDate.getMonth() + 1).padStart(2, '0')}-${String(hDate.getDate()).padStart(2, '0')}`;
+        return hUtcStr === targetUtcStr || hLocalStr === targetLocalStr || hUtcStr === targetLocalStr || hLocalStr === targetUtcStr;
+      });
+
+      return matched.map(h => this.mapFixedHoliday(h));
     } catch (e) {
       console.error("[PostgresStorage] getHolidaysByDate error:", e);
       return this.fallback.getHolidaysByDate(date);
@@ -4043,12 +4091,12 @@ async getLeave(id: string): Promise<any | undefined> {
     }
   }
 
-  async createHoliday(holiday: any): Promise<void> {
-    await this.createFixedHoliday(holiday);
+  async createHoliday(holiday: any): Promise<any> {
+    return this.createFixedHoliday(holiday);
   }
 
-  async updateHoliday(id: string, updates: any): Promise<void> {
-    await this.updateFixedHoliday(id, updates);
+  async updateHoliday(id: string, updates: any): Promise<any> {
+    return this.updateFixedHoliday(id, updates);
   }
 
   async deleteHoliday(id: string): Promise<boolean> {
