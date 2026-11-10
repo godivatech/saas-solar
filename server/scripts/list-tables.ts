@@ -14,3 +14,4 @@ async function listAllTables() {
   process.exit(0);
 }
 listAllTables().catch(e => { console.error(e); process.exit(1); });
+

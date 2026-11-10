@@ -20,6 +20,7 @@ import {
   SitePhoto
 } from "@shared/schema";
 import crypto from "crypto";
+import { getActiveTenantId } from "../tenant-context";
 
 export class SiteVisitService {
   private collection = firestoreDb.collection('siteVisits');
@@ -27,6 +28,8 @@ export class SiteVisitService {
 
   private async getTenantId(tenantId?: string): Promise<string> {
     if (tenantId) return tenantId;
+    const active = getActiveTenantId();
+    if (active) return active;
     if (this.defaultTenantId) return this.defaultTenantId;
     try {
       const [defaultTenant] = await pgDb.select().from(tenants).where(eq(tenants.slug, "default")).limit(1);

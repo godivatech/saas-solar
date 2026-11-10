@@ -9,3 +9,4 @@ try {
   console.log(`Found ${storageLines.length} errors in storage-postgres.ts:`);
   console.log(storageLines.join('\n'));
 }
+

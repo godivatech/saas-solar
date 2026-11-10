@@ -15,6 +15,7 @@ import * as cron from 'node-cron';
 import { storage } from '../storage';
 import type { OTSession } from '../types/ot-types';
 import { getUTCMidnight, getUTCEndOfDay } from '../utils/timezone-helpers';
+import { runWithTenant } from '../tenant-context';
 
 export class OTAutoCloseService {
     private static cronJob: cron.ScheduledTask | null = null;
@@ -54,15 +55,13 @@ export class OTAutoCloseService {
     }
 
     /**
-     * Main auto-close logic
+     * Main auto-close logic across all tenants
      */
     private static async runAutoClose(): Promise<void> {
         console.log('[OT-AUTO-CLOSE] Starting auto-close at', new Date().toISOString());
 
         try {
             // ZERO-FRAUD FIX: Look back 3 days to catch "Zombie Sessions"
-            // If we only look at "yesterday", a late-night session (e.g. 10 PM) might not be 
-            // 16h old during the first pass, and would be ignored forever in subsequent runs.
             const threeDaysAgo = new Date();
             threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
             const startDate = getUTCMidnight(threeDaysAgo); // UTC-safe
@@ -71,6 +70,27 @@ export class OTAutoCloseService {
             yesterday.setDate(yesterday.getDate() - 1);
             const endDate = getUTCEndOfDay(yesterday); // UTC-safe
 
+            const allTenants = await (storage as any).listAllTenants?.() || [];
+            const tenantsToProcess = allTenants.length > 0 
+                ? allTenants 
+                : [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+
+            for (const tenant of tenantsToProcess) {
+                try {
+                    await runWithTenant(tenant.id, async () => {
+                        await this.processTenantAutoClose(tenant.id, startDate, endDate);
+                    });
+                } catch (tenantErr) {
+                    console.error(`[OT-AUTO-CLOSE] Error processing tenant ${tenant.id}:`, tenantErr);
+                }
+            }
+        } catch (error) {
+            console.error('[OT-AUTO-CLOSE] Fatal error during run:', error);
+        }
+    }
+
+    private static async processTenantAutoClose(tenantId: string, startDate: Date, endDate: Date): Promise<void> {
+        try {
             // Get attendance records from last 3 days
             const attendanceRecords = await storage.listAttendanceByDateRange(
                 startDate,
@@ -81,7 +101,7 @@ export class OTAutoCloseService {
             // Senior best practice: Use Promise.allSettled() for true parallel execution
             const uniqueUserIds = Array.from(new Set(attendanceRecords.map(a => a.userId)));
 
-            console.log(`[OT-AUTO-CLOSE] Loading ${uniqueUserIds.length} unique users in parallel...`);
+            console.log(`[OT-AUTO-CLOSE] Loading ${uniqueUserIds.length} unique users in parallel for tenant ${tenantId}...`);
             const userResults = await Promise.allSettled(
                 uniqueUserIds.map(userId => storage.getUser(userId))
             );
@@ -204,10 +224,10 @@ export class OTAutoCloseService {
                 }
             }
 
-            console.log(`[OT-AUTO-CLOSE] ✅ Completed: ${closedCount} sessions closed, ${errorCount} errors`);
+            console.log(`[OT-AUTO-CLOSE] ✅ Completed tenant ${tenantId}: ${closedCount} sessions closed, ${errorCount} errors`);
 
         } catch (error) {
-            console.error('[OT-AUTO-CLOSE] Fatal error during run:', error);
+            console.error('[OT-AUTO-CLOSE] Error during tenant ${tenantId} run:', error);
         }
     }
 

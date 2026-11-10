@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
 import { initializeCronJobs } from "./cron-scheduler";
+import { runWithTenant } from "./tenant-context";
 
 const app = express();
 
@@ -28,6 +29,16 @@ app.use((req, res, next) => {
   req.setTimeout(300000); // 5 minutes
   res.setTimeout(300000);
   next();
+});
+
+// Multi-tenant header context propagation
+app.use((req, res, next) => {
+  const headerTenant = req.headers["x-tenant-id"] as string;
+  if (headerTenant) {
+    runWithTenant(headerTenant, () => next());
+  } else {
+    next();
+  }
 });
 
 app.use((req, res, next) => {

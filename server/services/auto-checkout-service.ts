@@ -2,10 +2,11 @@ import { storage } from '../storage';
 import { EnterpriseTimeService } from './enterprise-time-service';
 import { NotificationService } from './notification-service';
 import { LeaveService } from './leave-service';
+import { runWithTenant } from '../tenant-context';
 
 export class AutoCheckoutService {
     /**
-     * Main job to process incomplete attendance records
+     * Main job to process incomplete attendance records across all tenants
      * Should be called via CRON every 5 minutes
      */
     static async processAutoCheckouts() {
@@ -22,8 +23,21 @@ export class AutoCheckoutService {
 
             const datesToProcess = [now, yesterday];
 
-            for (const date of datesToProcess) {
-                await this.processDate(date);
+            const allTenants = await (storage as any).listAllTenants?.() || [];
+            const tenantsToProcess = allTenants.length > 0 
+                ? allTenants 
+                : [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+
+            for (const tenant of tenantsToProcess) {
+                try {
+                    await runWithTenant(tenant.id, async () => {
+                        for (const date of datesToProcess) {
+                            await this.processDate(date);
+                        }
+                    });
+                } catch (tenantErr) {
+                    console.error(`[AUTO-CHECKOUT] Error processing tenant ${tenant.id}:`, tenantErr);
+                }
             }
 
             console.log('[AUTO-CHECKOUT] Job completed successfully.');

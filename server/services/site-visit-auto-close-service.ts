@@ -22,6 +22,7 @@
 import { siteVisitService } from './site-visit-service';
 import { NotificationService } from './notification-service';
 import { storage } from '../storage';
+import { runWithTenant } from '../tenant-context';
 import type { SiteVisit } from '@shared/schema';
 
 export class SiteVisitAutoCloseService {
@@ -29,7 +30,7 @@ export class SiteVisitAutoCloseService {
     private static readonly AUTO_CLOSE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
     /**
-     * Main auto-close processing logic
+     * Main auto-close processing logic across all tenants
      * Called by cron job daily at 12:05 AM
      */
     static async processAutoClose(): Promise<void> {
@@ -40,36 +41,45 @@ export class SiteVisitAutoCloseService {
             const cutoff = new Date(Date.now() - this.AUTO_CLOSE_THRESHOLD_MS);
             console.log(`[SITE-VISIT-AUTO-CLOSE] Cutoff time: ${cutoff.toISOString()}`);
 
-            // Get all active site visits
-            const activeVisits = await siteVisitService.getActiveSiteVisits();
-            console.log(`[SITE-VISIT-AUTO-CLOSE] Found ${activeVisits.length} active visits`);
+            const allTenants = await (storage as any).listAllTenants?.() || [];
+            const tenantsToProcess = allTenants.length > 0 
+                ? allTenants 
+                : [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
 
-            // Filter to only stale visits older than threshold
-            const staleVisits = activeVisits.filter(visit => {
-                // Defensive guard: only process in_progress visits
-                if (visit.status !== 'in_progress') return false;
+            let totalClosed = 0;
+            let totalErrors = 0;
 
-                // Check if visit is older than 24 hours
-                return visit.siteInTime < cutoff;
-            });
-
-            console.log(`[SITE-VISIT-AUTO-CLOSE] Found ${staleVisits.length} stale visits to auto-close`);
-
-            // Process each stale visit
-            let closedCount = 0;
-            let errorCount = 0;
-
-            for (const visit of staleVisits) {
+            for (const tenant of tenantsToProcess) {
                 try {
-                    await this.autoCloseVisit(visit);
-                    closedCount++;
-                } catch (error) {
-                    console.error(`[SITE-VISIT-AUTO-CLOSE] Failed to close visit ${visit.id}:`, error);
-                    errorCount++;
+                    await runWithTenant(tenant.id, async () => {
+                        // Get all active site visits for this tenant
+                        const activeVisits = await siteVisitService.getActiveSiteVisits();
+                        console.log(`[SITE-VISIT-AUTO-CLOSE] Found ${activeVisits.length} active visits for tenant ${tenant.id}`);
+
+                        // Filter to only stale visits older than threshold
+                        const staleVisits = activeVisits.filter(visit => {
+                            if (visit.status !== 'in_progress') return false;
+                            return visit.siteInTime < cutoff;
+                        });
+
+                        console.log(`[SITE-VISIT-AUTO-CLOSE] Found ${staleVisits.length} stale visits to auto-close for tenant ${tenant.id}`);
+
+                        for (const visit of staleVisits) {
+                            try {
+                                await this.autoCloseVisit(visit);
+                                totalClosed++;
+                            } catch (error) {
+                                console.error(`[SITE-VISIT-AUTO-CLOSE] Failed to close visit ${visit.id}:`, error);
+                                totalErrors++;
+                            }
+                        }
+                    });
+                } catch (tenantErr) {
+                    console.error(`[SITE-VISIT-AUTO-CLOSE] Error processing tenant ${tenant.id}:`, tenantErr);
                 }
             }
 
-            console.log(`[SITE-VISIT-AUTO-CLOSE] ✅ Completed: ${closedCount} visits closed, ${errorCount} errors`);
+            console.log(`[SITE-VISIT-AUTO-CLOSE] ✅ Completed: ${totalClosed} visits closed, ${totalErrors} errors across ${tenantsToProcess.length} tenants`);
 
         } catch (error) {
             console.error('[SITE-VISIT-AUTO-CLOSE] Fatal error during cleanup:', error);

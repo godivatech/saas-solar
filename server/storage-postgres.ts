@@ -65,6 +65,7 @@ import {
   payrollFieldConfigs as pgPayrollFieldConfigs
 } from "@shared/schema.postgres";
 import { eq, or, ilike, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { getActiveTenantId } from "./tenant-context";
 
 /**
  * Enterprise PostgreSQL Storage Layer
@@ -96,6 +97,8 @@ export class PostgresStorage implements IStorage {
   }
 
   private async getTenantId(): Promise<string> {
+    const active = getActiveTenantId();
+    if (active) return active;
     if (this.defaultTenantId) return this.defaultTenantId;
     const [t] = await pgDb.select().from(tenants).limit(1);
     if (t) {
@@ -110,6 +113,15 @@ export class PostgresStorage implements IStorage {
     }).returning();
     this.defaultTenantId = created.id;
     return created.id;
+  }
+
+  async listAllTenants(): Promise<any[]> {
+    try {
+      return await pgDb.select().from(tenants);
+    } catch (e) {
+      console.error("[PostgresStorage] listAllTenants error:", e);
+      return [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+    }
   }
 
   // ===================================================================
@@ -145,6 +157,7 @@ export class PostgresStorage implements IStorage {
       panNumber: u.panNumber || undefined,
       uanNumber: u.uanNumber || undefined,
       esiNumber: u.esiNumber || undefined,
+      tenantId: u.tenantId || undefined,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt
     } as unknown as User;
@@ -152,10 +165,15 @@ export class PostgresStorage implements IStorage {
 
   async getUser(idOrUid: string): Promise<User | undefined> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const whereCondition = activeTenantId
+        ? and(or(eq(pgUsers.id, idOrUid), eq(pgUsers.firebaseUid, idOrUid)), eq(pgUsers.tenantId, activeTenantId))
+        : or(eq(pgUsers.id, idOrUid), eq(pgUsers.firebaseUid, idOrUid));
+
       const [u] = await pgDb
         .select()
         .from(pgUsers)
-        .where(or(eq(pgUsers.id, idOrUid), eq(pgUsers.firebaseUid, idOrUid)))
+        .where(whereCondition)
         .limit(1);
 
       if (u) {
@@ -567,7 +585,7 @@ export class PostgresStorage implements IStorage {
       const [c] = await pgDb.insert(pgCustomers).values({
         tenantId,
         name: data.name,
-        mobile: data.mobile,
+        mobile: data.mobile || data.phone || data.contactNumber || "",
         email: data.email || null,
         address: data.address || null,
         city: data.city || null,
@@ -599,7 +617,9 @@ export class PostgresStorage implements IStorage {
       const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
-      if (data.mobile !== undefined) updateValues.mobile = data.mobile;
+      if (data.mobile !== undefined || data.phone !== undefined || data.contactNumber !== undefined) {
+        updateValues.mobile = data.mobile || data.phone || data.contactNumber;
+      }
       if (data.email !== undefined) updateValues.email = data.email;
       if (data.address !== undefined) updateValues.address = data.address;
       if (data.city !== undefined) updateValues.city = data.city;

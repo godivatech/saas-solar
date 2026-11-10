@@ -38,6 +38,7 @@ import { EnterprisePerformanceMonitor } from "./services/performance-monitor";
 import { auth } from "./firebase";
 import { userService } from "./services/user-service";
 import { testFirebaseAdminSDK, testUserManagement } from "./test-firebase-admin";
+import { runWithTenant } from "./tenant-context";
 import { attendanceRateLimiter, generalRateLimiter, createRateLimitMiddleware } from "./utils/rate-limiter";
 import { DataCompletenessAnalyzer, SiteVisitDataMapper } from "./services/quotation-mapping-service";
 import { registerQuotationRoutes } from "./routes/quotations";
@@ -139,7 +140,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userProfile = await storage.getUser(decodedToken.uid);
 
       // Multi-tenancy context isolation: attach tenantId to request context
-      req.tenantId = (decodedToken as any).tenant_id || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const candidateTenantId = (decodedToken as any).tenant_id || (req.headers["x-tenant-id"] as string);
+      req.tenantId = candidateTenantId || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
 
 
       if (userProfile) {
@@ -206,7 +208,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       }
 
-      next();
+      return runWithTenant(req.tenantId, () => {
+        next();
+      });
     } catch (error) {
       console.error("Auth verification error:", error);
       res.status(401).json({ message: "Unauthorized: Invalid token" });

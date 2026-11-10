@@ -1145,10 +1145,15 @@ export interface IStorage {
   // Missing methods restored
   getUsersByRole(role: string): Promise<User[]>;
   addOTSessionTransaction(attendanceId: string, sessionData: any): Promise<void>;
+  listAllTenants(): Promise<any[]>;
 }
 
 export class FirestoreStorage implements IStorage {
   private db: Firestore;
+
+  async listAllTenants(): Promise<any[]> {
+    return [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+  }
 
   constructor() {
     // Use the db imported at the top of the file

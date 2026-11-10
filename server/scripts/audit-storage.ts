@@ -58,3 +58,4 @@ for (const m of suspicious) {
 }
 
 process.exit(0);
+
