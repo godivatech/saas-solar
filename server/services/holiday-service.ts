@@ -13,6 +13,7 @@
 import { storage } from '../storage';
 import type { Holiday } from '../types/ot-types';
 import { getUTCMidnight } from '../utils/timezone-helpers';
+import { getActiveTenantId } from '../tenant-context';
 
 export class HolidayService {
 
@@ -80,8 +81,9 @@ export class HolidayService {
             }
 
             // Generate ID
+            const tenantPrefix = getActiveTenantId() ? `${getActiveTenantId()}_` : '';
             const dateStr = holiday.date.toISOString().split('T')[0].replace(/-/g, '');
-            const id = `holiday_${dateStr}`;
+            const id = `${tenantPrefix}holiday_${dateStr}`;
 
             // Create holiday
             const newHoliday: Holiday = {

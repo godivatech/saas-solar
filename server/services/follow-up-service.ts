@@ -238,7 +238,17 @@ export class FollowUpService {
         pgUpdates.newCustomerStatus = newCustomerStatus;
       }
 
-      const [updated] = await pgDb.update(pgFollowUpVisits).set(pgUpdates).where(eq(pgFollowUpVisits.id, id)).returning();
+      const resolvedTenantId = await this.getTenantId((updates as any).tenantId);
+      const [updated] = await pgDb
+        .update(pgFollowUpVisits)
+        .set(pgUpdates)
+        .where(
+          and(
+            eq(pgFollowUpVisits.id, id),
+            eq(pgFollowUpVisits.tenantId, resolvedTenantId)
+          )
+        )
+        .returning();
 
       if (!updated) {
         throw new Error(`Follow-up ${id} not found`);
@@ -292,16 +302,28 @@ export class FollowUpService {
   /**
    * Get follow-up by ID (PostgreSQL first, Firestore fallback)
    */
-  async getFollowUpById(id: string): Promise<FollowUpSiteVisit | null> {
+  async getFollowUpById(id: string, tenantId?: string): Promise<FollowUpSiteVisit | null> {
     try {
-      const [v] = await pgDb.select().from(pgFollowUpVisits).where(eq(pgFollowUpVisits.id, id)).limit(1);
+      const resolvedTenantId = await this.getTenantId(tenantId);
+      const [v] = await pgDb
+        .select()
+        .from(pgFollowUpVisits)
+        .where(
+          and(
+            eq(pgFollowUpVisits.id, id),
+            eq(pgFollowUpVisits.tenantId, resolvedTenantId)
+          )
+        )
+        .limit(1);
       if (v) {
         return this.convertPostgresToFollowUp(v);
       }
 
       const doc = await this.collection.doc(id).get();
       if (!doc.exists) return null;
-      return { id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()!) };
+      const docData = doc.data()!;
+      if (docData.tenantId && docData.tenantId !== resolvedTenantId) return null;
+      return { id: doc.id, ...this.convertFirestoreToFollowUp(docData) };
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-up:', error);
       return null;
@@ -359,10 +381,15 @@ export class FollowUpService {
   async getFollowUpsByUser(
     userId: string,
     department?: string,
-    status?: string
+    status?: string,
+    tenantId?: string
   ): Promise<FollowUpSiteVisit[]> {
     try {
-      const conditions: any[] = [eq(pgFollowUpVisits.userId, userId)];
+      const resolvedTenantId = await this.getTenantId(tenantId);
+      const conditions: any[] = [
+        eq(pgFollowUpVisits.tenantId, resolvedTenantId),
+        eq(pgFollowUpVisits.userId, userId)
+      ];
       if (department) conditions.push(eq(pgFollowUpVisits.department, department));
       if (status) conditions.push(eq(pgFollowUpVisits.status, status));
 

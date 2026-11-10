@@ -5,6 +5,7 @@
  */
 
 import { storage } from '../storage';
+import { getActiveTenantId } from '../tenant-context';
 
 export interface DepartmentTiming {
   department: string;
@@ -39,13 +40,18 @@ export class EnterpriseTimeService {
   private static cacheExpiry = new Map<string, number>();
   private static readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+  private static getCacheKey(department: string): string {
+    const tenantId = getActiveTenantId() || 'global';
+    return `${tenantId}:${department.toLowerCase().trim()}`;
+  }
+
   /**
    * Get department timing with intelligent caching
    */
   static async getDepartmentTiming(department: string): Promise<DepartmentTiming> {
     // Normalize department name to lowercase for consistent lookup
     const normalizedDept = department.toLowerCase();
-    const cacheKey = normalizedDept;
+    const cacheKey = this.getCacheKey(normalizedDept);
     const now = Date.now();
 
     // Check cache first
@@ -144,17 +150,21 @@ export class EnterpriseTimeService {
    * Real-time timing updates - invalidate cache when department timing changes
    */
   static invalidateTimingCache(department?: string): void {
+    const tenantId = getActiveTenantId() || 'global';
     if (department) {
-      // CRITICAL FIX: Use consistent cache key format
-      const cacheKey = department.toLowerCase();
+      const cacheKey = this.getCacheKey(department);
       this.timingCache.delete(cacheKey);
       this.cacheExpiry.delete(cacheKey);
-      console.log(`Invalidated timing cache for department: ${department}`);
+      console.log(`Invalidated timing cache for tenant ${tenantId}, department: ${department}`);
     } else {
-      // Clear all cache
-      this.timingCache.clear();
-      this.cacheExpiry.clear();
-      console.log('Invalidated all timing cache');
+      // Invalidate all entries for the active tenant
+      for (const key of Array.from(this.timingCache.keys())) {
+        if (key.startsWith(`${tenantId}:`)) {
+          this.timingCache.delete(key);
+          this.cacheExpiry.delete(key);
+        }
+      }
+      console.log(`Invalidated timing cache for tenant ${tenantId}`);
     }
   }
 

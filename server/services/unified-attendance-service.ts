@@ -1004,7 +1004,9 @@ export class UnifiedAttendanceService {
    */
   static async generateAttendanceMetrics(userId: string, dateRange?: { start: Date; end: Date }) {
     try {
-      const attendanceRecords = await storage.getAttendance(userId);
+      const attendanceRecords = dateRange
+        ? await storage.listAttendanceByUserBetweenDates(userId, dateRange.start, dateRange.end)
+        : await storage.listAttendanceByUser(userId);
 
       if (!Array.isArray(attendanceRecords)) {
         console.error('ATTENDANCE METRICS: Expected array, got:', typeof attendanceRecords);
@@ -1019,13 +1021,8 @@ export class UnifiedAttendanceService {
         };
       }
 
-      // Filter by date range if provided
-      let filteredRecords = dateRange
-        ? attendanceRecords.filter((record: any) => {
-          const checkInDate = new Date(record.checkInTime);
-          return checkInDate >= dateRange.start && checkInDate <= dateRange.end;
-        })
-        : attendanceRecords;
+      // Filter by date range if not already filtered
+      let filteredRecords = attendanceRecords;
 
       // P2: Exclude pending reviews to match payroll logic
       filteredRecords = filteredRecords.filter((record: any) => record.adminReviewStatus !== 'pending');

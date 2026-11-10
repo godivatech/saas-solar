@@ -238,13 +238,27 @@ export class SiteVisitService {
       if (updates.autoClosedAt !== undefined) pgUpdates.autoClosedAt = updates.autoClosedAt ? (updates.autoClosedAt instanceof Date ? updates.autoClosedAt : new Date(updates.autoClosedAt)) : null;
       if (updates.autoCorrectionReason !== undefined) pgUpdates.autoCorrectionReason = updates.autoCorrectionReason;
 
-      const [updated] = await pgDb.update(pgSiteVisits).set(pgUpdates).where(eq(pgSiteVisits.id, id)).returning();
+      const resolvedTenantId = await this.getTenantId((updates as any).tenantId);
+      const [updated] = await pgDb
+        .update(pgSiteVisits)
+        .set(pgUpdates)
+        .where(
+          and(
+            eq(pgSiteVisits.id, id),
+            eq(pgSiteVisits.tenantId, resolvedTenantId)
+          )
+        )
+        .returning();
 
       if (!updated) {
         // Fallback check Firestore
         const docRef = this.collection.doc(id);
         const doc = await docRef.get();
         if (!doc.exists) {
+          throw new Error('Site visit not found');
+        }
+        const docData = doc.data()!;
+        if (docData.tenantId && docData.tenantId !== resolvedTenantId) {
           throw new Error('Site visit not found');
         }
         await docRef.update({ ...updates, updatedAt: Timestamp.fromDate(new Date()) });
@@ -277,9 +291,19 @@ export class SiteVisitService {
   /**
    * Get site visit by ID (PostgreSQL first, Firestore fallback)
    */
-  async getSiteVisitById(id: string): Promise<SiteVisit | null> {
+  async getSiteVisitById(id: string, tenantId?: string): Promise<SiteVisit | null> {
     try {
-      const [v] = await pgDb.select().from(pgSiteVisits).where(eq(pgSiteVisits.id, id)).limit(1);
+      const resolvedTenantId = await this.getTenantId(tenantId);
+      const [v] = await pgDb
+        .select()
+        .from(pgSiteVisits)
+        .where(
+          and(
+            eq(pgSiteVisits.id, id),
+            eq(pgSiteVisits.tenantId, resolvedTenantId)
+          )
+        )
+        .limit(1);
       if (v) {
         return this.convertPostgresToSiteVisit(v);
       }
@@ -289,7 +313,11 @@ export class SiteVisitService {
       if (!doc.exists) {
         return null;
       }
-      return { id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()!) };
+      const docData = doc.data()!;
+      if (docData.tenantId && docData.tenantId !== resolvedTenantId) {
+        return null;
+      }
+      return { id: doc.id, ...this.convertFirestoreToSiteVisit(docData) };
     } catch (error) {
       console.error('Error getting site visit:', error);
       throw new Error('Failed to get site visit');
@@ -467,11 +495,23 @@ export class SiteVisitService {
   /**
    * Delete site visit from PostgreSQL and Firestore
    */
-  async deleteSiteVisit(id: string): Promise<void> {
+  async deleteSiteVisit(id: string, tenantId?: string): Promise<void> {
     try {
-      await pgDb.delete(pgSiteVisits).where(eq(pgSiteVisits.id, id));
+      const resolvedTenantId = await this.getTenantId(tenantId);
+      await pgDb
+        .delete(pgSiteVisits)
+        .where(
+          and(
+            eq(pgSiteVisits.id, id),
+            eq(pgSiteVisits.tenantId, resolvedTenantId)
+          )
+        );
       try {
-        await this.collection.doc(id).delete();
+        const docRef = this.collection.doc(id);
+        const doc = await docRef.get();
+        if (doc.exists && (!doc.data()?.tenantId || doc.data()?.tenantId === resolvedTenantId)) {
+          await docRef.delete();
+        }
       } catch (fbErr) {
         console.warn("[SiteVisitService] Firestore async delete warning:", fbErr);
       }
@@ -626,6 +666,7 @@ export class SiteVisitService {
    * Export site visits to Excel format directly from PostgreSQL
    */
   async exportSiteVisitsToExcel(filters?: {
+    tenantId?: string;
     department?: string;
     status?: string;
     startDate?: Date;
@@ -633,16 +674,14 @@ export class SiteVisitService {
   }): Promise<Buffer> {
     try {
       const XLSX = await import('xlsx');
-      const conditions: any[] = [];
+      const resolvedTenantId = await this.getTenantId(filters?.tenantId);
+      const conditions: any[] = [eq(pgSiteVisits.tenantId, resolvedTenantId)];
       if (filters?.department) conditions.push(eq(pgSiteVisits.department, filters.department));
       if (filters?.status) conditions.push(eq(pgSiteVisits.status, filters.status));
       if (filters?.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
       if (filters?.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
 
-      let query = pgDb.select().from(pgSiteVisits);
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as any;
-      }
+      const query = pgDb.select().from(pgSiteVisits).where(and(...conditions));
 
       const rows = await query.orderBy(desc(pgSiteVisits.siteInTime));
       const siteVisits = rows.map(r => this.convertPostgresToSiteVisit(r));

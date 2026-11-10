@@ -3298,6 +3298,7 @@ async getLeave(id: string): Promise<any | undefined> {
   async updateDepartmentTiming(department: string, data: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
+      const dept = department.toLowerCase().trim();
       const updateValues: any = { updatedAt: new Date() };
       if (data.checkInTime !== undefined) updateValues.checkInTime = data.checkInTime;
       if (data.checkOutTime !== undefined) updateValues.checkOutTime = data.checkOutTime;
@@ -3306,16 +3307,41 @@ async getLeave(id: string): Promise<any | undefined> {
       if (data.weekendDays !== undefined) updateValues.weekendDays = data.weekendDays;
       if (data.isActive !== undefined) updateValues.isActive = data.isActive;
 
-      const [updated] = await pgDb
+      let [updated] = await pgDb
         .update(pgDepartmentTimings)
         .set(updateValues)
         .where(
           and(
             eq(pgDepartmentTimings.tenantId, tenantId),
-            eq(pgDepartmentTimings.department, department.toLowerCase().trim())
+            eq(pgDepartmentTimings.department, dept)
           )
         )
         .returning();
+
+      if (!updated) {
+        // Upsert if not existing for this tenant
+        [updated] = await pgDb
+          .insert(pgDepartmentTimings)
+          .values({
+            tenantId,
+            department: dept,
+            checkInTime: data.checkInTime || "9:00 AM",
+            checkOutTime: data.checkOutTime || "6:00 PM",
+            workingHours: String(data.workingHours || 8),
+            autoCheckoutGraceMinutes: data.autoCheckoutGraceMinutes || 120,
+            weekendDays: data.weekendDays || [0],
+            isActive: data.isActive ?? true,
+            ...updateValues
+          })
+          .onConflictDoUpdate({
+            target: [pgDepartmentTimings.tenantId, pgDepartmentTimings.department],
+            set: {
+              ...updateValues,
+              updatedAt: new Date()
+            }
+          })
+          .returning();
+      }
 
       try { await this.fallback.updateDepartmentTiming(department, data); } catch (_) {}
       return updated;
@@ -4021,7 +4047,9 @@ async getLeave(id: string): Promise<any | undefined> {
   async updatePayrollPeriod(id: string, updates: any): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
+      const resolvedId = id.startsWith(`${tenantId}-`) ? id : `${tenantId}-${id}`;
       const updateValues: any = { updatedAt: new Date() };
+      if (updates.status !== undefined) updateValues.status = updates.status;
       if (updates.isLocked !== undefined) updateValues.isLocked = updates.isLocked;
       if (updates.lockedAt !== undefined) updateValues.lockedAt = updates.lockedAt ? new Date(updates.lockedAt) : null;
       if (updates.lockedBy !== undefined) updateValues.lockedBy = updates.lockedBy;
@@ -4031,7 +4059,10 @@ async getLeave(id: string): Promise<any | undefined> {
         .set(updateValues)
         .where(
           and(
-            eq(pgPayrollPeriods.id, id),
+            or(
+              eq(pgPayrollPeriods.id, id),
+              eq(pgPayrollPeriods.id, resolvedId)
+            ),
             eq(pgPayrollPeriods.tenantId, tenantId)
           )
         );

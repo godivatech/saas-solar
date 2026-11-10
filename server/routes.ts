@@ -138,9 +138,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Load user profile from storage
       const userProfile = await storage.getUser(decodedToken.uid);
 
-      // Multi-tenancy context isolation: attach tenantId to request context
-      const candidateTenantId = (decodedToken as any).tenant_id || (req.headers["x-tenant-id"] as string);
-      req.tenantId = candidateTenantId || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      // Multi-tenancy context isolation: anchor tenantId to verified user profile
+      const userTenantId = (userProfile as any)?.tenantId || (decodedToken as any).tenant_id || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const requestedTenantId = req.headers["x-tenant-id"] as string;
+
+      if (requestedTenantId && userProfile?.role === "master_admin") {
+        // Master admin is authorized to perform cross-tenant operations
+        req.tenantId = requestedTenantId;
+      } else {
+        // Non-master_admin users are strictly anchored to their assigned tenant (prevents tenant spoofing)
+        req.tenantId = userTenantId;
+      }
 
 
       if (userProfile) {
@@ -215,6 +223,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(401).json({ message: "Unauthorized: Invalid token" });
     }
   };
+
+  // ============================================
+  // MULTI-TENANT SAAS MANAGEMENT ROUTES
+  // ============================================
+
+  // GET /api/tenant/current: Get current tenant branding and settings
+  app.get("/api/tenant/current", verifyAuth, async (req, res) => {
+    try {
+      const tenant = await (storage as any).getTenant?.(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      res.json(tenant);
+    } catch (error) {
+      console.error("Error fetching current tenant:", error);
+      res.status(500).json({ message: "Failed to fetch tenant configuration" });
+    }
+  });
+
+  // PATCH /api/tenant/current: Update current tenant branding and configuration (admin / master_admin only)
+  app.patch("/api/tenant/current", verifyAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || (user.role !== "master_admin" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied - admin only" });
+      }
+
+      const updates: any = {};
+      const allowed = ["name", "companyName", "logoUrl", "supportEmail", "supportPhone", "address", "gstin", "bankDetails"];
+      for (const field of allowed) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      }
+
+      const updated = await (storage as any).updateTenant?.(req.tenantId, updates);
+      res.json({ success: true, tenant: updated });
+    } catch (error) {
+      console.error("Error updating current tenant:", error);
+      res.status(500).json({ message: "Failed to update tenant configuration" });
+    }
+  });
+
+  // GET /api/admin/tenants: List all tenants (master_admin only)
+  app.get("/api/admin/tenants", verifyAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || user.role !== "master_admin") {
+        return res.status(403).json({ message: "Access denied - master admin only" });
+      }
+
+      const tenants = await (storage as any).listAllTenants?.() || [];
+      res.json(tenants);
+    } catch (error) {
+      console.error("Error listing tenants:", error);
+      res.status(500).json({ message: "Failed to list tenants" });
+    }
+  });
 
   // ============================================
   // ATTENDANCE AUTO-CHECKOUT & NOTIFICATIONS (Phases 1-3)

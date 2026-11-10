@@ -29,9 +29,17 @@ const verifyAuth = async (req: any, res: Response, next: NextFunction) => {
         // Load user profile
         const userProfile = await storage.getUser(decodedToken.uid);
 
-        // Multi-tenancy context isolation
-        const candidateTenantId = (decodedToken as any).tenant_id || (req.headers["x-tenant-id"] as string);
-        req.tenantId = candidateTenantId || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+        // Multi-tenancy context isolation: anchor tenantId to verified user profile
+        const userTenantId = (userProfile as any)?.tenantId || (decodedToken as any).tenant_id || "adc11a73-7ef8-417b-b930-28d1d855d707";
+        const requestedTenantId = req.headers["x-tenant-id"] as string;
+
+        if (requestedTenantId && userProfile?.role === "master_admin") {
+            // Master admin is authorized to perform cross-tenant operations
+            req.tenantId = requestedTenantId;
+        } else {
+            // Non-master_admin users are strictly anchored to their assigned tenant (prevents tenant spoofing)
+            req.tenantId = userTenantId;
+        }
 
         if (userProfile) {
             req.authenticatedUser = {
