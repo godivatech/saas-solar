@@ -251,6 +251,16 @@ export class SiteVisitService {
         .returning();
 
       if (!updated) {
+        // Check if site visit exists under another tenant in Postgres
+        const [otherTenantVisit] = await pgDb
+          .select({ id: pgSiteVisits.id })
+          .from(pgSiteVisits)
+          .where(eq(pgSiteVisits.id, id))
+          .limit(1);
+        if (otherTenantVisit) {
+          throw new Error("Unauthorized: Site visit belongs to another tenant");
+        }
+
         // Fallback check Firestore
         const docRef = this.collection.doc(id);
         const doc = await docRef.get();
@@ -258,8 +268,8 @@ export class SiteVisitService {
           throw new Error('Site visit not found');
         }
         const docData = doc.data()!;
-        if (docData.tenantId && docData.tenantId !== resolvedTenantId) {
-          throw new Error('Site visit not found');
+        if (docData.tenantId !== resolvedTenantId) {
+          throw new Error('Unauthorized: Site visit belongs to another tenant');
         }
         await docRef.update({ ...updates, updatedAt: Timestamp.fromDate(new Date()) });
         const refreshed = await docRef.get();
@@ -308,13 +318,23 @@ export class SiteVisitService {
         return this.convertPostgresToSiteVisit(v);
       }
 
+      // Check if site visit exists under another tenant in Postgres
+      const [otherTenantVisit] = await pgDb
+        .select({ id: pgSiteVisits.id })
+        .from(pgSiteVisits)
+        .where(eq(pgSiteVisits.id, id))
+        .limit(1);
+      if (otherTenantVisit) {
+        return null;
+      }
+
       // Fallback to Firestore
       const doc = await this.collection.doc(id).get();
       if (!doc.exists) {
         return null;
       }
       const docData = doc.data()!;
-      if (docData.tenantId && docData.tenantId !== resolvedTenantId) {
+      if (docData.tenantId !== resolvedTenantId) {
         return null;
       }
       return { id: doc.id, ...this.convertFirestoreToSiteVisit(docData) };
@@ -350,7 +370,9 @@ export class SiteVisitService {
         .orderBy('createdAt', 'desc')
         .limit(limit)
         .get();
-      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      return snapshot.docs
+        .filter(doc => doc.data()?.tenantId === resolvedTenantId)
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
@@ -379,7 +401,9 @@ export class SiteVisitService {
         .orderBy('createdAt', 'desc')
         .limit(limit)
         .get();
-      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      return snapshot.docs
+        .filter(doc => doc.data()?.tenantId === resolvedTenantId)
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
@@ -403,7 +427,9 @@ export class SiteVisitService {
     } catch (error) {
       console.error('Error getting active site visits:', error);
       const snapshot = await this.collection.where('status', '==', 'in_progress').get();
-      const results = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      const results = snapshot.docs
+        .filter(doc => doc.data()?.tenantId === resolvedTenantId)
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
       return results.sort((a, b) => b.siteInTime.getTime() - a.siteInTime.getTime());
     }
   }
@@ -431,7 +457,9 @@ export class SiteVisitService {
         .where('siteInTime', '<=', Timestamp.fromDate(endDate))
         .orderBy('siteInTime', 'desc')
         .get();
-      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      return snapshot.docs
+        .filter(doc => doc.data()?.tenantId === resolvedTenantId)
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 
@@ -470,16 +498,19 @@ export class SiteVisitService {
       return rows.map(r => this.convertPostgresToSiteVisit(r));
     } catch (error) {
       console.error('Error getting filtered site visits:', error);
+      const resolvedTenantId = await this.getTenantId(filters.tenantId);
       // Fallback to in-memory Firestore filtering
       let query: any = this.collection;
       if (filters.userId) query = query.where('userId', '==', filters.userId);
       else if (filters.department) query = query.where('department', '==', filters.department);
 
       const snapshot = await query.limit(filters.limit || 100).get();
-      let results = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...this.convertFirestoreToSiteVisit(doc.data())
-      }));
+      let results = snapshot.docs
+        .filter((doc: any) => doc.data()?.tenantId === resolvedTenantId)
+        .map((doc: any) => ({
+          id: doc.id,
+          ...this.convertFirestoreToSiteVisit(doc.data())
+        }));
 
       if (filters.status) results = results.filter(sv => sv.status === filters.status);
       if (filters.startDate) results = results.filter(sv => sv.siteInTime >= filters.startDate!);
@@ -498,24 +529,40 @@ export class SiteVisitService {
   async deleteSiteVisit(id: string, tenantId?: string): Promise<void> {
     try {
       const resolvedTenantId = await this.getTenantId(tenantId);
-      await pgDb
+      const [deleted] = await pgDb
         .delete(pgSiteVisits)
         .where(
           and(
             eq(pgSiteVisits.id, id),
             eq(pgSiteVisits.tenantId, resolvedTenantId)
           )
-        );
+        )
+        .returning({ id: pgSiteVisits.id });
+
+      if (!deleted) {
+        const [otherTenantVisit] = await pgDb
+          .select({ id: pgSiteVisits.id })
+          .from(pgSiteVisits)
+          .where(eq(pgSiteVisits.id, id))
+          .limit(1);
+        if (otherTenantVisit) {
+          throw new Error("Unauthorized: Site visit belongs to another tenant");
+        }
+      }
+
       try {
         const docRef = this.collection.doc(id);
         const doc = await docRef.get();
-        if (doc.exists && (!doc.data()?.tenantId || doc.data()?.tenantId === resolvedTenantId)) {
+        if (doc.exists && doc.data()?.tenantId === resolvedTenantId) {
           await docRef.delete();
         }
       } catch (fbErr) {
         console.warn("[SiteVisitService] Firestore async delete warning:", fbErr);
       }
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('Error deleting site visit:', error);
       throw new Error('Failed to delete site visit');
     }
@@ -596,8 +643,11 @@ export class SiteVisitService {
       return rows.map(r => this.convertPostgresToSiteVisit(r));
     } catch (error) {
       console.error('Error getting site visits for monitoring:', error);
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const snapshot = await this.collection.orderBy('siteInTime', 'desc').limit(500).get();
-      return snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
+      return snapshot.docs
+        .filter(doc => doc.data()?.tenantId === resolvedTenantId)
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToSiteVisit(doc.data()) }));
     }
   }
 

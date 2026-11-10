@@ -1,5 +1,6 @@
-import { IStorage } from "../storage";
+import { IStorage, storage } from "../storage";
 import { InsertLeaveBalance, FIXED_ANNUAL_HOLIDAYS } from "@shared/schema";
+import { runWithTenant } from "../tenant-context";
 
 export class LeaveBalanceService {
   constructor(private storage: IStorage) {}
@@ -14,15 +15,16 @@ export class LeaveBalanceService {
       console.log(`[LeaveBalanceService] Found ${activeUsers.length} active users`);
 
       for (const user of activeUsers) {
-        const existingBalance = await this.storage.getLeaveBalance(user.uid, month, year);
+        const userId = user.id || user.uid;
+        const existingBalance = await this.storage.getLeaveBalance(userId, month, year);
         
         if (existingBalance) {
-          console.log(`[LeaveBalanceService] Balance already exists for user ${user.uid} in ${month}/${year}`);
+          console.log(`[LeaveBalanceService] Balance already exists for user ${userId} in ${month}/${year}`);
           continue;
         }
 
         const balanceData: InsertLeaveBalance = {
-          userId: user.uid,
+          userId,
           employeeId: user.employeeId || "",
           casualLeaveBalance: 1,
           permissionHoursBalance: 2,
@@ -38,7 +40,7 @@ export class LeaveBalanceService {
         };
 
         await this.storage.createLeaveBalance(balanceData);
-        console.log(`[LeaveBalanceService] Created balance for user ${user.uid}`);
+        console.log(`[LeaveBalanceService] Created balance for user ${userId}`);
       }
 
       console.log(`[LeaveBalanceService] Monthly reset completed for ${month}/${year}`);
@@ -85,8 +87,17 @@ export class LeaveBalanceService {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    const balance = await this.storage.getLeaveBalance(userId, currentMonth, currentYear);
+    let balance = await this.storage.getLeaveBalance(userId, currentMonth, currentYear);
     
+    if (!balance) {
+      try {
+        await this.initializeBalanceForUser(userId, "");
+        balance = await this.storage.getLeaveBalance(userId, currentMonth, currentYear);
+      } catch (e) {
+        console.error(`[LeaveBalanceService] Auto-init balance error for user ${userId}:`, e);
+      }
+    }
+
     if (!balance) {
       return {
         casualLeaveBalance: 1,
@@ -164,6 +175,38 @@ export class LeaveBalanceService {
 
     if (now.getDate() === 1) {
       await this.resetMonthlyLeaveBalances(currentMonth, currentYear);
+    }
+  }
+
+  /**
+   * Run monthly leave reset across all tenants
+   * Called by cron scheduler on 1st of every month or startup catch-up
+   */
+  static async processMonthlyResetAllTenants(): Promise<void> {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    console.log(`[LeaveBalanceService] Starting monthly reset across all tenants for ${currentMonth}/${currentYear}`);
+    try {
+      const allTenants = await (storage as any).listAllTenants?.() || [];
+      const tenantsToProcess = allTenants.length > 0 
+        ? allTenants 
+        : [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+
+      for (const tenant of tenantsToProcess) {
+        try {
+          await runWithTenant(tenant.id, async () => {
+            const service = new LeaveBalanceService(storage);
+            await service.resetMonthlyLeaveBalances(currentMonth, currentYear);
+          });
+        } catch (err) {
+          console.error(`[LeaveBalanceService] Failed to reset leave balances for tenant ${tenant.id}:`, err);
+        }
+      }
+      console.log(`[LeaveBalanceService] Completed monthly reset across ${tenantsToProcess.length} tenants`);
+    } catch (err) {
+      console.error("[LeaveBalanceService] Error in processMonthlyResetAllTenants:", err);
     }
   }
 }

@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 import { AutoCheckoutService } from './services/auto-checkout-service';
 import { OTAutoCloseService } from './services/ot-auto-close-cron';
 import { SiteVisitAutoCloseService } from './services/site-visit-auto-close-service';
+import { LeaveBalanceService } from './services/leave-balance-service';
 
 /**
  * Initialize all scheduled cron jobs
@@ -58,6 +59,22 @@ export function initializeCronJobs() {
 
     console.log('[CRON] ✅ Site visit auto-close job scheduled: Daily at 12:05 AM');
 
+    // Monthly Leave Balance Reset Job: Runs on 1st of every month at 12:10 AM IST
+    // Cron expression: "10 0 1 * *" = At 12:10 AM on day 1 of every month
+    const monthlyLeaveResetJob = cron.schedule('10 0 1 * *', async () => {
+        console.log('[CRON] Monthly leave reset job triggered at:', new Date().toISOString());
+        try {
+            await LeaveBalanceService.processMonthlyResetAllTenants();
+            console.log('[CRON] Monthly leave reset job completed successfully');
+        } catch (error) {
+            console.error('[CRON] Error in monthly leave reset job:', error);
+        }
+    }, {
+        timezone: "Asia/Kolkata" // IST timezone
+    });
+
+    console.log('[CRON] ✅ Monthly leave reset job scheduled: 1st of every month at 12:10 AM');
+
     // Optional: Run auto-checkout immediately on server start (for testing)
     // Remove this in production if you don't want immediate execution
     if (process.env.NODE_ENV === 'development') {
@@ -74,11 +91,19 @@ export function initializeCronJobs() {
         .then(() => console.log('[CRON] ✅ Startup OT check completed - any forgotten sessions have been processed'))
         .catch(error => console.error('[CRON] ⚠️ Startup OT check failed:', error));
 
+    // ✅ RELIABILITY FIX: Catch-up check for monthly leave reset on server startup
+    if (new Date().getDate() === 1) {
+        console.log('[CRON] 1st of the month detected on startup - running monthly leave reset check...');
+        LeaveBalanceService.processMonthlyResetAllTenants()
+            .then(() => console.log('[CRON] ✅ Startup monthly leave reset check completed'))
+            .catch(error => console.error('[CRON] ⚠️ Startup monthly leave reset check failed:', error));
+    }
 
     return {
         autoCheckoutJob,
         otAutoCloseJob,
-        siteVisitAutoCloseJob
+        siteVisitAutoCloseJob,
+        monthlyLeaveResetJob
     };
 }
 
@@ -89,10 +114,12 @@ export function stopCronJobs(jobs: {
     autoCheckoutJob: cron.ScheduledTask;
     otAutoCloseJob: cron.ScheduledTask;
     siteVisitAutoCloseJob: cron.ScheduledTask;
+    monthlyLeaveResetJob?: cron.ScheduledTask;
 }) {
     console.log('[CRON] Stopping all cron jobs...');
     jobs.autoCheckoutJob.stop();
     jobs.otAutoCloseJob.stop();
     jobs.siteVisitAutoCloseJob.stop();
+    jobs.monthlyLeaveResetJob?.stop();
     console.log('[CRON] All cron jobs stopped');
 }

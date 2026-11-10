@@ -55,6 +55,7 @@ import { SiteVisitService } from './services/site-visit-service';
 import { ActivityService } from './services/activity-service';
 import { ManualOTService } from './services/manual-ot-service';
 import { LeaveService } from './services/leave-service';
+import { LeaveBalanceService } from './services/leave-balance-service';
 import { HolidayService } from './services/holiday-service';
 import { AdvancedQuotationService } from './services/quotation-service';
 import { getUTCMidnight, getUTCEndOfDay } from './utils/timezone-helpers';
@@ -5395,8 +5396,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Get current leave balance
-      const balance = await storage.getCurrentLeaveBalance(user.id);
+      // Get current leave balance (auto-initialize if missing for this month)
+      let balance = await storage.getCurrentLeaveBalance(user.id);
+      if (!balance) {
+        const leaveBalanceService = new LeaveBalanceService(storage);
+        await leaveBalanceService.initializeBalanceForUser(user.id, user.employeeId || user.id);
+        balance = await storage.getCurrentLeaveBalance(user.id);
+      }
       if (!balance) {
         return res.status(400).json({ message: "Leave balance not found. Please contact HR." });
       }
