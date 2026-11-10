@@ -1146,6 +1146,8 @@ export interface IStorage {
   getUsersByRole(role: string): Promise<User[]>;
   addOTSessionTransaction(attendanceId: string, sessionData: any): Promise<void>;
   listAllTenants(): Promise<any[]>;
+  getTenant(id?: string): Promise<any | undefined>;
+  updateTenant(id: string, updates: any): Promise<any>;
 }
 
 export class FirestoreStorage implements IStorage {
@@ -1153,6 +1155,14 @@ export class FirestoreStorage implements IStorage {
 
   async listAllTenants(): Promise<any[]> {
     return [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
+  }
+
+  async getTenant(id?: string): Promise<any | undefined> {
+    return { id: id || "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" };
+  }
+
+  async updateTenant(id: string, updates: any): Promise<any> {
+    return { id, ...updates };
   }
 
   constructor() {

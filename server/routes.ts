@@ -225,8 +225,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // TEST ENDPOINT FOR PENDING REVIEW FIX
   // ============================================
-  app.post("/api/test/create-incomplete-record", async (req, res) => {
+  app.post("/api/test/create-incomplete-record", verifyAuth, async (req, res) => {
     try {
+      const authUser = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!authUser || (authUser.role !== "master_admin" && authUser.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied - admin only" });
+      }
+
       console.log('🧪 Creating test incomplete attendance record...');
 
       // 1. Get a user (try master_admin first)
@@ -418,9 +423,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Investigation endpoint for OT bug analysis (NO AUTH for debugging)
-  app.get("/api/test/investigate-ot-bug", async (req, res) => {
+  // Investigation endpoint for OT bug analysis (Admin only)
+  app.get("/api/test/investigate-ot-bug", verifyAuth, async (req, res) => {
     try {
+      const authUser = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!authUser || (authUser.role !== "master_admin" && authUser.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied - admin only" });
+      }
+
       console.log('\n\n═══════════════════════════════════════════════');
       console.log('🔍 OT BUG INVESTIGATION STARTED');
       console.log('═══════════════════════════════════════════════\n');
@@ -1425,31 +1435,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Public endpoint for syncing user profile after Firebase Auth registration
+  // Secure endpoint for syncing user profile after Firebase Auth registration
   app.post("/api/sync-user", async (req, res) => {
     try {
       console.log("User sync request received:", req.body);
 
-      // Get UID from request body or auth token
-      let uid = req.body.uid;
-
-      if (!uid) {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith("Bearer ")) {
-          const token = authHeader.split("Bearer ")[1];
-          try {
-            const decodedToken = await auth.verifyIdToken(token);
-            uid = decodedToken.uid;
-          } catch (error) {
-            console.error("Token verification failed during sync:", error);
-            return res.status(401).json({ message: "Invalid or missing authentication" });
-          }
-        } else {
-          return res.status(400).json({ message: "UID required for user sync" });
-        }
+      // Require valid Firebase ID Token
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "Authentication required" });
       }
 
-      const result = await userService.syncUserProfile(uid, req.body);
+      const token = authHeader.split("Bearer ")[1];
+      let uid: string;
+      try {
+        const decodedToken = await auth.verifyIdToken(token);
+        uid = decodedToken.uid;
+      } catch (error) {
+        console.error("Token verification failed during sync:", error);
+        return res.status(401).json({ message: "Invalid or expired authentication token" });
+      }
+
+      // Restrict fields during self-sync: never allow role/permissions privilege escalation
+      const safeSyncData: any = {};
+      if (req.body.displayName) safeSyncData.displayName = req.body.displayName;
+      if (req.body.phone) safeSyncData.phone = req.body.phone;
+
+      const result = await userService.syncUserProfile(uid, safeSyncData);
 
       if (!result.success) {
         return res.status(400).json({ message: result.error });
@@ -1460,9 +1472,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user: result.user,
         action: result.action
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error syncing user:", error);
-      res.status(500).json({ message: "Failed to sync user profile" });
+      res.status(500).json({ message: "Failed to sync user profile", error: error.message });
     }
   });
 
@@ -6306,9 +6318,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Firebase User List Endpoint (for admin testing)
-  app.get("/api/firebase/list-users", async (req, res) => {
+  // Firebase User List Endpoint (Master Admin only)
+  app.get("/api/firebase/list-users", verifyAuth, async (req, res) => {
     try {
+      const authUser = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!authUser || authUser.role !== "master_admin") {
+        return res.status(403).json({ message: "Access denied - Master Admin only" });
+      }
+
       const listResult = await auth.listUsers(100); // Get up to 100 users
 
       const users = listResult.users.map(user => ({

@@ -1848,7 +1848,8 @@ export class QuotationTemplateService {
     quotation: Quotation,
     project: QuotationProject,
     customer: any,
-    preparedByName?: string
+    preparedByName?: string,
+    customCompanyDetails?: CompanyDetails
   ): QuotationTemplate {
     const pricingBreakdown = this.calculatePricingBreakdown(project, customer.propertyType);
 
@@ -1935,16 +1936,18 @@ export class QuotationTemplateService {
       reference = `${this.formatKWForDisplay(pricingBreakdown?.kw || 0)} kW ${projectTypeName} Solar Power Generation System`;
     }
 
+    const companyHeader = customCompanyDetails || this.COMPANY_DETAILS;
+
     return {
-      header: this.COMPANY_DETAILS,
+      header: companyHeader,
       quotationNumber: quotation.quotationNumber || this.generateQuotationNumber(),
       quotationDate: new Date().toLocaleDateString('en-GB'),
       quoteRevision: quotation.documentVersion || 1,
       quoteValidity: `${validityDays} Days`,
       preparedBy: preparedByName || quotation.preparedBy || "SM",
       refName: quotation.refName || undefined,
-      contactPerson: quotation.contactPerson || "Godiva Solar",
-      contactNumber: quotation.contactNumber || "+91 99949 01500",
+      contactPerson: quotation.contactPerson || companyHeader.name || "Godiva Solar",
+      contactNumber: quotation.contactNumber || (companyHeader.contact.phone[0]) || "+91 99949 01500",
       projectType: project.projectType,
       floor: (project as any).floor,
       customer: {
@@ -1967,7 +1970,7 @@ export class QuotationTemplateService {
           advancePercentage: quotation.advancePaymentPercentage || 90,
           balancePercentage: 100 - (quotation.advancePaymentPercentage || 90),
           bankDetails: accountDetails || {
-            name: "Godiva Solar",
+            name: companyHeader.name || "Godiva Solar",
             bank: "ICICI",
             branch: "Sobramaniyapuram Madurai",
             accountNo: "067005013400",

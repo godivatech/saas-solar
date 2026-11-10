@@ -124,6 +124,38 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async getTenant(id?: string): Promise<any | undefined> {
+    try {
+      const targetId = id || (await this.getTenantId());
+      const [t] = await pgDb
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, targetId))
+        .limit(1);
+      return t;
+    } catch (e) {
+      console.error("[PostgresStorage] getTenant error:", e);
+      return undefined;
+    }
+  }
+
+  async updateTenant(id: string, updates: any): Promise<any> {
+    try {
+      const [updated] = await pgDb
+        .update(tenants)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return updated;
+    } catch (e) {
+      console.error("[PostgresStorage] updateTenant error:", e);
+      return undefined;
+    }
+  }
+
   // ===================================================================
   // USERS
   // ===================================================================
@@ -187,10 +219,15 @@ export class PostgresStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const whereCondition = activeTenantId
+        ? and(eq(pgUsers.email, email.trim().toLowerCase()), eq(pgUsers.tenantId, activeTenantId))
+        : eq(pgUsers.email, email.trim().toLowerCase());
+
       const [u] = await pgDb
         .select()
         .from(pgUsers)
-        .where(eq(pgUsers.email, email.trim().toLowerCase()))
+        .where(whereCondition)
         .limit(1);
 
       if (u) {
@@ -295,10 +332,18 @@ export class PostgresStorage implements IStorage {
       if (data.employeeStatus !== undefined) updateValues.employeeStatus = data.employeeStatus;
       if (data.permissions !== undefined) updateValues.permissions = data.permissions;
 
+      const activeTenantId = getActiveTenantId();
+      const whereCondition = activeTenantId
+        ? and(
+            or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)),
+            eq(pgUsers.tenantId, activeTenantId)
+          )
+        : or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id));
+
       const [u] = await pgDb
         .update(pgUsers)
         .set(updateValues)
-        .where(or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)))
+        .where(whereCondition)
         .returning();
 
       try { await this.fallback.updateUser(id, data); } catch (_) {}
@@ -2127,10 +2172,16 @@ export class PostgresStorage implements IStorage {
 
   async approveLeaveByManager(leaveId: string, managerId: string, remarks?: string): Promise<LeaveApplication> {
     try {
+      const tenantId = await this.getTenantId();
       const [updated] = await pgDb
         .update(pgLeaveApplications)
         .set({ status: "pending_hr", approvedBy: managerId, updatedAt: new Date() })
-        .where(eq(pgLeaveApplications.id, leaveId))
+        .where(
+          and(
+            eq(pgLeaveApplications.id, leaveId),
+            eq(pgLeaveApplications.tenantId, tenantId)
+          )
+        )
         .returning();
       try { await this.fallback.approveLeaveByManager(leaveId, managerId, remarks); } catch (_) {}
       if (updated) return this.mapLeaveApp(updated);
@@ -2142,12 +2193,18 @@ export class PostgresStorage implements IStorage {
 
   async approveLeaveByHR(leaveId: string, hrId: string, remarks?: string): Promise<LeaveApplication> {
     try {
+      const tenantId = await this.getTenantId();
       const updated = await pgDb.transaction(async (tx) => {
         // 1. Fetch leave application
         const [leave] = await tx
           .select()
           .from(pgLeaveApplications)
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(
+            and(
+              eq(pgLeaveApplications.id, leaveId),
+              eq(pgLeaveApplications.tenantId, tenantId)
+            )
+          )
           .limit(1);
 
         if (!leave) throw new Error("Leave application not found");
@@ -2164,7 +2221,12 @@ export class PostgresStorage implements IStorage {
             reviewedBy: hrId,
             updatedAt: new Date()
           })
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(
+            and(
+              eq(pgLeaveApplications.id, leaveId),
+              eq(pgLeaveApplications.tenantId, tenantId)
+            )
+          )
           .returning();
 
         // 3. Atomically update leave balance
@@ -2179,6 +2241,7 @@ export class PostgresStorage implements IStorage {
             .from(pgLeaveBalances)
             .where(
               and(
+                eq(pgLeaveBalances.tenantId, tenantId),
                 eq(pgLeaveBalances.userId, leave.userId),
                 eq(pgLeaveBalances.year, year),
                 eq(pgLeaveBalances.month, month)
@@ -2195,7 +2258,6 @@ export class PostgresStorage implements IStorage {
               })
               .where(eq(pgLeaveBalances.id, balance.id));
           } else {
-            const tenantId = leave.tenantId || (await this.getTenantId());
             await tx.insert(pgLeaveBalances).values({
               tenantId,
               userId: leave.userId,
@@ -2214,6 +2276,7 @@ export class PostgresStorage implements IStorage {
             .from(pgLeaveBalances)
             .where(
               and(
+                eq(pgLeaveBalances.tenantId, tenantId),
                 eq(pgLeaveBalances.userId, leave.userId),
                 eq(pgLeaveBalances.year, year),
                 eq(pgLeaveBalances.month, month)
@@ -3363,10 +3426,16 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getNotifications(userId: string): Promise<any[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgNotifications)
-        .where(eq(pgNotifications.userId, userId))
+        .where(
+          and(
+            eq(pgNotifications.userId, userId),
+            eq(pgNotifications.tenantId, tenantId)
+          )
+        )
         .orderBy(desc(pgNotifications.createdAt));
       return rows;
     } catch (e) {
@@ -3866,10 +3935,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getPayrollPeriod(month: number, year: number): Promise<any | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [period] = await pgDb
         .select()
         .from(pgPayrollPeriods)
-        .where(and(eq(pgPayrollPeriods.month, month), eq(pgPayrollPeriods.year, year)))
+        .where(
+          and(
+            eq(pgPayrollPeriods.month, month),
+            eq(pgPayrollPeriods.year, year),
+            eq(pgPayrollPeriods.tenantId, tenantId)
+          )
+        )
         .limit(1);
 
       if (period) {
@@ -3898,7 +3974,10 @@ async getLeave(id: string): Promise<any | undefined> {
   async createPayrollPeriod(period: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
-      const periodId = period.id || `period-${tenantId}-${period.year}-${period.month}`;
+      const rawId = period.id || `payroll_${period.year}_${String(period.month).padStart(2, '0')}`;
+      const periodId = rawId.startsWith(`${tenantId}-`) || rawId.startsWith(`period-${tenantId}`)
+        ? rawId
+        : `${tenantId}-${rawId}`;
       const [p] = await pgDb.insert(pgPayrollPeriods).values({
         id: periodId,
         tenantId,

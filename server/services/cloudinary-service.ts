@@ -4,6 +4,7 @@
  */
 
 import { v2 as cloudinary } from 'cloudinary';
+import { getActiveTenantId } from '../tenant-context';
 
 // Configure Cloudinary
 cloudinary.config({
@@ -23,10 +24,26 @@ export interface CloudinaryUploadResult {
 }
 
 export class CloudinaryService {
-  private static readonly FOLDER_NAME = 'godiva attendance field images';
-  private static readonly EMPLOYEE_PHOTO_FOLDER = 'employee-documents/photos';
-  private static readonly AADHAR_FOLDER = 'employee-documents/aadhar';
-  private static readonly PAN_FOLDER = 'employee-documents/pan';
+  private static getTenantPrefix(): string {
+    const tenantId = getActiveTenantId();
+    return tenantId ? `tenants/${tenantId}/` : '';
+  }
+
+  private static getEmployeePhotoFolder(): string {
+    return `${this.getTenantPrefix()}employee-documents/photos`;
+  }
+
+  private static getAadharFolder(): string {
+    return `${this.getTenantPrefix()}employee-documents/aadhar`;
+  }
+
+  private static getPanFolder(): string {
+    return `${this.getTenantPrefix()}employee-documents/pan`;
+  }
+
+  private static getAttendancePhotoFolder(): string {
+    return `${this.getTenantPrefix()}godiva attendance field images`;
+  }
 
   /**
    * Upload employee profile photo to Cloudinary
@@ -41,14 +58,15 @@ export class CloudinaryService {
     try {
       const timestamp = new Date();
       const dateStr = timestamp.toISOString().split('T')[0];
-      const publicId = `${this.EMPLOYEE_PHOTO_FOLDER}/${employeeId}_${dateStr}`;
+      const folder = this.getEmployeePhotoFolder();
+      const publicId = `${folder}/${employeeId}_${dateStr}`;
 
       // Removed debug log
       // Removed debug log
 
       const result = await cloudinary.uploader.upload(base64Image, {
         public_id: publicId,
-        folder: this.EMPLOYEE_PHOTO_FOLDER,
+        folder: folder,
         resource_type: 'image',
         format: 'jpg',
         transformation: [
@@ -89,14 +107,15 @@ export class CloudinaryService {
     try {
       const timestamp = new Date();
       const dateStr = timestamp.toISOString().split('T')[0];
-      const publicId = `${this.AADHAR_FOLDER}/${employeeId}_${dateStr}`;
+      const folder = this.getAadharFolder();
+      const publicId = `${folder}/${employeeId}_${dateStr}`;
 
       // Removed debug log
       // Removed debug log
 
       const result = await cloudinary.uploader.upload(base64Image, {
         public_id: publicId,
-        folder: this.AADHAR_FOLDER,
+        folder: folder,
         resource_type: 'image',
         format: 'jpg',
         transformation: [
@@ -137,14 +156,15 @@ export class CloudinaryService {
     try {
       const timestamp = new Date();
       const dateStr = timestamp.toISOString().split('T')[0];
-      const publicId = `${this.PAN_FOLDER}/${employeeId}_${dateStr}`;
+      const folder = this.getPanFolder();
+      const publicId = `${folder}/${employeeId}_${dateStr}`;
 
       // Removed debug log
       // Removed debug log
 
       const result = await cloudinary.uploader.upload(base64Image, {
         public_id: publicId,
-        folder: this.PAN_FOLDER,
+        folder: folder,
         resource_type: 'image',
         format: 'jpg',
         transformation: [
@@ -187,7 +207,8 @@ export class CloudinaryService {
       // Generate unique filename
       const dateStr = timestamp.toISOString().split('T')[0];
       const timeStr = timestamp.toTimeString().split(' ')[0].replace(/:/g, '-');
-      const publicId = `${this.FOLDER_NAME}/${userId}_${dateStr}_${timeStr}`;
+      const folder = this.getAttendancePhotoFolder();
+      const publicId = `${folder}/${userId}_${dateStr}_${timeStr}`;
 
       // Removed debug log
       // Removed debug log
@@ -195,7 +216,7 @@ export class CloudinaryService {
       // Upload to Cloudinary
       const result = await cloudinary.uploader.upload(base64Image, {
         public_id: publicId,
-        folder: this.FOLDER_NAME,
+        folder: folder,
         resource_type: 'image',
         format: 'jpg',
         quality: 'auto',
@@ -247,7 +268,7 @@ export class CloudinaryService {
       // List resources in the folder to check if it exists
       const result = await cloudinary.api.resources({
         type: 'upload',
-        prefix: this.FOLDER_NAME,
+        prefix: this.getAttendancePhotoFolder(),
         max_results: 1
       });
       
@@ -267,7 +288,7 @@ export class CloudinaryService {
     return {
       cloudName: 'doeodacsg',
       uploadPreset: 'attendance_photos', // You may need to create this preset
-      folder: this.FOLDER_NAME
+      folder: this.getAttendancePhotoFolder()
     };
   }
 }

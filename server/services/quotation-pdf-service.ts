@@ -3,8 +3,9 @@
  * Creates professional PDF documents matching the reference format
  */
 
-import { QuotationTemplate, QuotationTemplateService } from "./quotation-template-service";
+import { QuotationTemplate, QuotationTemplateService, CompanyDetails } from "./quotation-template-service";
 import { Quotation, QuotationProject } from "@shared/schema";
+import { storage } from "../storage";
 
 export interface PDFGenerationOptions {
   format: 'A4';
@@ -772,12 +773,31 @@ export class QuotationPDFService {
       // Resolve user name if preparedBy contains a user ID
       const preparedByName = await this.resolveUserName(quotation.preparedBy);
 
+      // Resolve tenant details for multi-tenant dynamic branding
+      let tenantCompanyDetails: CompanyDetails | undefined = undefined;
+      try {
+        const tenant = await storage.getTenant();
+        if (tenant) {
+          tenantCompanyDetails = {
+            name: tenant.name || "Godiva Solar",
+            logo: tenant.logoUrl || "/assets/company-logo.png",
+            contact: {
+              phone: tenant.phone ? [tenant.phone] : ["6374901500", "9585557516", "8925840511"],
+              email: tenant.email || "support@godivasolar.com",
+              website: tenant.website || "www.godivasolar.com",
+              address: tenant.address || "14 R, N.S. Konar Street, Jaihindpuram, Madurai, Tamilnadu, India - 625 011"
+            }
+          };
+        }
+      } catch (_) {}
+
       // Generate template
       const template = QuotationTemplateService.generateQuotationTemplate(
         quotation,
         project,
         customer,
-        preparedByName // Pass the resolved user name
+        preparedByName, // Pass the resolved user name
+        tenantCompanyDetails
       );
 
       // Generate HTML content
