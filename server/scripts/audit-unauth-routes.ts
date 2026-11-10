@@ -22,7 +22,8 @@ for (let i = 0; i < lines.length; i++) {
       }
     }
     if (!hasVerifyAuth) {
-      console.log(`Line ${i+1}: ${method} ${route}`);
+      console.log(`Line ${i + 1}: ${method} ${route}`);
     }
   }
 }
+

@@ -1800,12 +1800,21 @@ export class PostgresStorage implements IStorage {
   async getLeaveBalance(userId: string, month: number, year: number): Promise<LeaveBalance | undefined> {
     try {
       const tenantId = await this.getTenantId();
+
+      // Resolve user identifiers (both postgres ID and firebase UID)
+      const user = await this.getUser(userId);
+      const userIdentifiers = [userId];
+      if (user) {
+        if (user.id && !userIdentifiers.includes(user.id)) userIdentifiers.push(user.id);
+        if (user.uid && !userIdentifiers.includes(user.uid)) userIdentifiers.push(user.uid);
+      }
+
       const [lb] = await pgDb
         .select()
         .from(pgLeaveBalances)
         .where(and(
           eq(pgLeaveBalances.tenantId, tenantId),
-          eq(pgLeaveBalances.userId, userId),
+          inArray(pgLeaveBalances.userId, userIdentifiers),
           eq(pgLeaveBalances.year, year),
           eq(pgLeaveBalances.month, month)
         ))

@@ -11,6 +11,7 @@ import { PayrollLockService } from '../services/payroll-lock-service';
 import { auth } from '../firebase';
 import { storage } from '../storage';
 import { getUTCMidnight } from '../utils/timezone-helpers';
+import { runWithTenant } from '../tenant-context';
 
 const router = Router();
 
@@ -27,16 +28,21 @@ const verifyAuth = async (req: any, res: Response, next: NextFunction) => {
 
         // Load user profile
         const userProfile = await storage.getUser(decodedToken.uid);
+
+        // Multi-tenancy context isolation
+        const candidateTenantId = (decodedToken as any).tenant_id || (req.headers["x-tenant-id"] as string);
+        req.tenantId = candidateTenantId || (userProfile as any)?.tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+
         if (userProfile) {
             req.authenticatedUser = {
                 uid: decodedToken.uid,
                 user: userProfile,
-                permissions: [],
+                permissions: (userProfile as any).permissions || [],
                 canApprove: false,
                 maxApprovalAmount: null
             };
         }
-        next();
+        return runWithTenant(req.tenantId, () => next());
     } catch (error) {
         console.error("Auth verification error:", error);
         res.status(401).json({ message: "Unauthorized: Invalid token" });

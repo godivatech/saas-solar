@@ -122,8 +122,13 @@ export class LeaveService {
     });
   }
 
-  isSunday(date: Date): boolean {
-    return date.getDay() === 0;
+  async isSunday(date: Date): Promise<boolean> {
+    try {
+      const { CompanySettingsService } = await import("./company-settings-service");
+      return await CompanySettingsService.isWeekend(date);
+    } catch (_) {
+      return date.getDay() === 0;
+    }
   }
 
   /**

@@ -41,7 +41,6 @@ import { testFirebaseAdminSDK, testUserManagement } from "./test-firebase-admin"
 import { runWithTenant } from "./tenant-context";
 import { attendanceRateLimiter, generalRateLimiter, createRateLimitMiddleware } from "./utils/rate-limiter";
 import { DataCompletenessAnalyzer, SiteVisitDataMapper } from "./services/quotation-mapping-service";
-import { registerQuotationRoutes } from "./routes/quotations";
 import { isCheckoutOverdue } from "./utils/time-helpers";
 import otRoutes from "./routes/ot-routes";
 import { AutoCheckoutService } from "./services/auto-checkout-service";
@@ -3760,6 +3759,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating PDF preview:", error);
       res.status(500).json({ message: "Failed to generate PDF preview" });
+    }
+  });
+
+  // Generate quotation preview (HTML format)
+  app.get("/api/quotations/:id/preview", verifyAuth, async (req, res) => {
+    try {
+      if (!req.authenticatedUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const hasPermission = req.authenticatedUser.permissions.includes("quotations.view") ||
+        req.authenticatedUser.permissions.includes("quotations.edit") ||
+        req.authenticatedUser.permissions.includes("quotations.create") ||
+        req.authenticatedUser.user.role === "master_admin";
+
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const quotation = await storage.getQuotation(req.params.id);
+      if (!quotation) {
+        return res.status(404).json({ message: "Quotation not found" });
+      }
+
+      const customer = await storage.getCustomer(quotation.customerId);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+
+      if (!quotation.projects || quotation.projects.length === 0) {
+        return res.status(400).json({ message: "No projects found in quotation" });
+      }
+
+      const project = quotation.projects[0];
+      const { QuotationPDFService } = await import("./services/quotation-pdf-service");
+      const htmlResult = await QuotationPDFService.generateHTMLPreview(
+        quotation,
+        project,
+        customer
+      );
+
+      res.setHeader('Content-Type', 'text/html');
+      res.send(htmlResult.html);
+    } catch (error) {
+      console.error("Error generating preview:", error);
+      res.status(500).json({ message: "Failed to generate preview" });
+    }
+  });
+
+  // Preview BOM for project configuration (before creating quotation)
+  app.post("/api/quotations/preview-bom", verifyAuth, async (req, res) => {
+    try {
+      if (!req.authenticatedUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const hasPermission = req.authenticatedUser.permissions.includes("quotations.view") ||
+        req.authenticatedUser.permissions.includes("quotations.edit") ||
+        req.authenticatedUser.permissions.includes("quotations.create") ||
+        req.authenticatedUser.user.role === "master_admin";
+
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const { project, propertyType } = req.body;
+      if (!project) {
+        return res.status(400).json({ message: "Project configuration is required" });
+      }
+
+      const { QuotationTemplateService } = await import("./services/quotation-template-service");
+      const billOfMaterials = QuotationTemplateService.generateBillOfMaterials(project, propertyType);
+
+      res.json({ billOfMaterials });
+    } catch (error) {
+      console.error("Error generating BOM preview:", error);
+      res.status(500).json({ message: "Failed to generate BOM preview" });
     }
   });
 
@@ -8568,9 +8644,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to export site visits data" });
     }
   });
-
-  // Register quotation routes
-  registerQuotationRoutes(app, verifyAuth);
 
   // Reverse Geocoding API endpoint using Google Maps
   app.get("/api/reverse-geocode", verifyAuth, async (req, res) => {

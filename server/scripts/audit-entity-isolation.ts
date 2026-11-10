@@ -52,7 +52,7 @@ function visit(node: ts.Node) {
         const methodText = methodNode.getText(sourceFile);
         const methodName = findParentMethod(node);
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-        
+
         // Skip imports and schema declarations at top of file
         if (line > 70) {
           const hasTenant = methodText.includes('tenantId') || methodText.includes('getTenantId');
@@ -89,3 +89,4 @@ for (const m of missingTenant) {
   console.log(`[L${m.line}] ${m.table} in ${m.method}:`);
   console.log(`   ${m.snippet}\n`);
 }
+

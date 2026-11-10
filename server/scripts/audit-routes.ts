@@ -31,3 +31,4 @@ for (const [route, lineNumbers] of routes.entries()) {
 }
 
 console.log(`\nTotal duplicate route definitions found: ${duplicateCount}`);
+
