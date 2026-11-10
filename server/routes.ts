@@ -2203,6 +2203,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      const authUser = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!authUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const targetEmployee = await storage.getUser(employeeId);
+      if (!targetEmployee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Authorization: Must be self, or have HR / Admin role in the active tenant
+      const isSelf = authUser.id === targetEmployee.id || authUser.firebaseUid === targetEmployee.firebaseUid;
+      const isAdminOrHR = ["master_admin", "admin"].includes(authUser.role || "") || authUser.department === "hr";
+
+      if (!isSelf && !isAdminOrHR) {
+        return res.status(403).json({ message: "Access denied - You can only upload documents for yourself or must have HR/Admin access" });
+      }
+
       // Validate document type
       const validDocumentTypes = ['photo', 'aadhar', 'pan'];
       if (!validDocumentTypes.includes(documentType)) {
@@ -5613,8 +5631,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Leave application not found" });
       }
 
-      // ✅ FIX: Simple check - is user the reporting manager for this leave?
-      if (leave.reportingManagerId !== user.id) {
+      // Check: is user the reporting manager for this leave, or master_admin?
+      if (leave.reportingManagerId !== user.id && user.role !== "master_admin") {
         return res.status(403).json({ message: "Access denied - You are not the reporting manager for this employee" });
       }
 
@@ -5690,7 +5708,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ✅ FIX: Simple check - is user the reporting manager OR HR?
       const isReportingManager = leave.reportingManagerId === user.id;
-      const isHR = user.department === "hr" || user.role === "master_admin";
+      const isMasterAdmin = user.role === "master_admin";
+      const isHR = user.department === "hr" || isMasterAdmin;
 
       if (!isReportingManager && !isHR) {
         return res.status(403).json({ message: "Access denied - Only reporting manager or HR can reject leaves" });
@@ -5698,7 +5717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Determine role: manager or hr
       let rejectedByRole: 'manager' | 'hr';
-      if (leave.status === "pending_manager" && isReportingManager) {
+      if (leave.status === "pending_manager" && (isReportingManager || isMasterAdmin)) {
         rejectedByRole = 'manager';
       } else if (leave.status === "pending_hr" && isHR) {
         rejectedByRole = 'hr';

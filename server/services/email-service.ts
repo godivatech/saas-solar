@@ -1,4 +1,8 @@
 import nodemailer from 'nodemailer';
+import { getActiveTenantId } from '../tenant-context';
+import { db } from '../db';
+import { tenants } from '@shared/schema.postgres';
+import { eq } from 'drizzle-orm';
 
 // Create reusable transporter using Gmail SMTP
 const transporter = nodemailer.createTransport({
@@ -10,12 +14,33 @@ const transporter = nodemailer.createTransport({
 });
 
 export class EmailService {
-  async sendPasswordResetEmail(email: string, resetLink: string, displayName: string) {
+  private async resolveTenantBranding(customTenantId?: string): Promise<{ companyName: string; supportEmail?: string }> {
     try {
+      const tenantId = customTenantId || getActiveTenantId();
+      if (tenantId) {
+        const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+        if (tenant) {
+          return {
+            companyName: tenant.name || (tenant as any).companyName || 'Solar ERP',
+            supportEmail: tenant.email || (tenant as any).supportEmail || undefined
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[EmailService] Failed to resolve tenant branding:', e);
+    }
+    return { companyName: 'Solar ERP' };
+  }
+
+  async sendPasswordResetEmail(email: string, resetLink: string, displayName: string, tenantId?: string) {
+    try {
+      const branding = await this.resolveTenantBranding(tenantId);
+      const companyName = branding.companyName;
+
       const mailOptions = {
-        from: `"Solar ERP" <${process.env.SMTP_USER}>`,
+        from: `"${companyName}" <${process.env.SMTP_USER}>`,
         to: email,
-        subject: 'Set Your Password - Employee Portal',
+        subject: `Set Your Password - ${companyName} Portal`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -34,11 +59,11 @@ export class EmailService {
             <body>
               <div class="container">
                 <div class="header">
-                  <h1>Welcome to the Team!</h1>
+                  <h1>Welcome to ${companyName}!</h1>
                 </div>
                 <div class="content">
                   <p>Hi ${displayName},</p>
-                  <p>Your employee account has been created. To access the employee portal, you need to set your password first.</p>
+                  <p>Your employee account has been created on <strong>${companyName}</strong>. To access your portal, you need to set your password first.</p>
                   <p>Click the button below to create your password:</p>
                   <p style="text-align: center;">
                     <a href="${resetLink}" class="button">Set My Password</a>
@@ -49,6 +74,7 @@ export class EmailService {
                   <p>If you didn't request this account, please ignore this email.</p>
                 </div>
                 <div class="footer">
+                  <p>© ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
                   <p>This is an automated email. Please do not reply.</p>
                 </div>
               </div>
@@ -66,12 +92,15 @@ export class EmailService {
     }
   }
 
-  async sendOTPEmail(email: string, otp: string) {
+  async sendOTPEmail(email: string, otp: string, tenantId?: string) {
     try {
+      const branding = await this.resolveTenantBranding(tenantId);
+      const companyName = branding.companyName;
+
       const mailOptions = {
-        from: `"Solar ERP" <${process.env.SMTP_USER}>`,
+        from: `"${companyName}" <${process.env.SMTP_USER}>`,
         to: email,
-        subject: 'Your Verification Code for Solar ERP Registration',
+        subject: `Your Verification Code for ${companyName}`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -93,11 +122,11 @@ export class EmailService {
               <div class="container">
                 <div class="header">
                   <h1>🔐 Email Verification</h1>
-                  <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Solar ERP Registration</p>
+                  <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">${companyName} Verification</p>
                 </div>
                 <div class="content">
                   <p style="font-size: 16px; margin-bottom: 10px;">Hello!</p>
-                  <p style="font-size: 14px; color: #666;">Thank you for registering with Solar ERP. Please use the verification code below to complete your registration:</p>
+                  <p style="font-size: 14px; color: #666;">Thank you for registering with ${companyName}. Please use the verification code below to complete your registration:</p>
                   
                   <div class="otp-box">
                     <p style="margin: 0 0 10px 0; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;">Your Verification Code</p>
@@ -113,10 +142,10 @@ export class EmailService {
                     </ul>
                   </div>
 
-                  <p style="font-size: 14px; color: #666; margin-top: 30px;">If you have any questions, please contact our support team.</p>
+                  <p style="font-size: 14px; color: #666; margin-top: 30px;">If you have any questions, please contact our support team${branding.supportEmail ? ` at ${branding.supportEmail}` : ''}.</p>
                 </div>
                 <div class="footer">
-                  <p style="margin: 0;">© ${new Date().getFullYear()} Solar ERP - Powered by Godivatech</p>
+                  <p style="margin: 0;">© ${new Date().getFullYear()} ${companyName}</p>
                   <p style="margin: 5px 0 0 0;">This is an automated email. Please do not reply.</p>
                 </div>
               </div>

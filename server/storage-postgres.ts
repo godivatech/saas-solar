@@ -211,6 +211,20 @@ export class PostgresStorage implements IStorage {
       if (u) {
         return this.mapUser(u);
       }
+
+      // If activeTenantId is scoped, verify if this user belongs to another tenant
+      if (activeTenantId) {
+        const [otherTenantUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(or(eq(pgUsers.id, idOrUid), eq(pgUsers.firebaseUid, idOrUid)))
+          .limit(1);
+
+        if (otherTenantUser) {
+          // Cross-tenant user access blocked
+          return undefined;
+        }
+      }
     } catch (e) {
       console.error("[PostgresStorage] getUser error, delegating to fallback:", e);
     }
@@ -346,13 +360,26 @@ export class PostgresStorage implements IStorage {
         .where(whereCondition)
         .returning();
 
-      try { await this.fallback.updateUser(id, data); } catch (_) {}
-
       if (u) {
+        try { await this.fallback.updateUser(id, data); } catch (_) {}
         return this.mapUser(u);
+      }
+
+      // If user exists under another tenant, reject cross-tenant modification
+      if (activeTenantId) {
+        const [otherTenantUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)))
+          .limit(1);
+
+        if (otherTenantUser) {
+          throw new Error(`Unauthorized: Target user belongs to another tenant`);
+        }
       }
     } catch (e) {
       console.error("[PostgresStorage] updateUser error, delegating:", e);
+      throw e;
     }
     return this.fallback.updateUser(id, data);
   }
@@ -594,6 +621,18 @@ export class PostgresStorage implements IStorage {
       if (c) {
         return this.mapCustomer(c);
       }
+
+      // Verify if customer belongs to another tenant in Postgres
+      const [otherTenantCustomer] = await pgDb
+        .select({ id: pgCustomers.id })
+        .from(pgCustomers)
+        .where(and(eq(pgCustomers.id, id), eq(pgCustomers.isDeleted, false)))
+        .limit(1);
+
+      if (otherTenantCustomer) {
+        // Cross-tenant boundary protected
+        return undefined;
+      }
     } catch (e) {
       console.error("[PostgresStorage] getCustomer error, delegating:", e);
     }
@@ -626,9 +665,9 @@ export class PostgresStorage implements IStorage {
 
   async createCustomer(data: any): Promise<Customer> {
     try {
-      const tenantId = await this.getTenantId();
+      const resolvedTenantId = data.tenantId || (await this.getTenantId());
       const [c] = await pgDb.insert(pgCustomers).values({
-        tenantId,
+        tenantId: resolvedTenantId,
         name: data.name,
         mobile: data.mobile || data.phone || data.contactNumber || "",
         email: data.email || null,
@@ -692,13 +731,24 @@ export class PostgresStorage implements IStorage {
         )
         .returning();
 
-      try { await this.fallback.updateCustomer(id, data); } catch (_) {}
-
       if (c) {
+        try { await this.fallback.updateCustomer(id, data); } catch (_) {}
         return this.mapCustomer(c);
+      }
+
+      // If customer exists in Postgres under another tenant, block cross-tenant update
+      const [otherTenantCustomer] = await pgDb
+        .select({ id: pgCustomers.id })
+        .from(pgCustomers)
+        .where(eq(pgCustomers.id, id))
+        .limit(1);
+
+      if (otherTenantCustomer) {
+        return undefined as any;
       }
     } catch (e) {
       console.error("[PostgresStorage] updateCustomer error, using fallback:", e);
+      throw e;
     }
     return this.fallback.updateCustomer(id, data);
   }
@@ -706,7 +756,7 @@ export class PostgresStorage implements IStorage {
   async deleteCustomer(id: string): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
-      await pgDb
+      const [deleted] = await pgDb
         .update(pgCustomers)
         .set({ isDeleted: true, updatedAt: new Date() })
         .where(
@@ -714,12 +764,14 @@ export class PostgresStorage implements IStorage {
             eq(pgCustomers.id, id),
             eq(pgCustomers.tenantId, tenantId)
           )
-        );
+        )
+        .returning();
 
-      try { await this.fallback.deleteCustomer(id); } catch (_) {}
+      if (deleted) {
+        try { await this.fallback.deleteCustomer(id); } catch (_) {}
+      }
     } catch (e) {
       console.error("[PostgresStorage] deleteCustomer error, using fallback:", e);
-      return this.fallback.deleteCustomer(id);
     }
   }
 
@@ -846,6 +898,17 @@ export class PostgresStorage implements IStorage {
       if (q) {
         return this.mapQuotation(q);
       }
+
+      // If exists under another tenant in Postgres, block cross-tenant leak
+      const [otherTenantQuotation] = await pgDb
+        .select({ id: pgQuotations.id })
+        .from(pgQuotations)
+        .where(eq(pgQuotations.id, id))
+        .limit(1);
+
+      if (otherTenantQuotation) {
+        return undefined;
+      }
     } catch (e) {
       console.error("[PostgresStorage] getQuotation error:", e);
     }
@@ -854,7 +917,7 @@ export class PostgresStorage implements IStorage {
 
   async createQuotation(data: any): Promise<Quotation> {
     try {
-      const tenantId = await this.getTenantId();
+      const tenantId = data.tenantId || (await this.getTenantId());
       const [created] = await pgDb.insert(pgQuotations).values({
         tenantId,
         quotationNumber: data.quotationNumber || `QT-${Date.now().toString().slice(-6)}`,
@@ -940,13 +1003,24 @@ export class PostgresStorage implements IStorage {
         )
         .returning();
 
-      try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) {}
-
       if (updated) {
+        try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) {}
         return this.mapQuotation(updated);
+      }
+
+      // Check if quotation exists in Postgres under another tenant
+      const [otherTenantQuotation] = await pgDb
+        .select({ id: pgQuotations.id })
+        .from(pgQuotations)
+        .where(eq(pgQuotations.id, id))
+        .limit(1);
+
+      if (otherTenantQuotation) {
+        return undefined as any;
       }
     } catch (e) {
       console.error("[PostgresStorage] updateQuotation error, delegating:", e);
+      throw e;
     }
     return this.fallback.updateQuotation(id, data, updatedBy);
   }
@@ -954,18 +1028,20 @@ export class PostgresStorage implements IStorage {
   async deleteQuotation(id: string): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
-      await pgDb
+      const [deleted] = await pgDb
         .delete(pgQuotations)
         .where(
           and(
             eq(pgQuotations.id, id),
             eq(pgQuotations.tenantId, tenantId)
           )
-        );
-      try { await this.fallback.deleteQuotation(id); } catch (_) {}
+        )
+        .returning();
+      if (deleted) {
+        try { await this.fallback.deleteQuotation(id); } catch (_) {}
+      }
     } catch (e) {
       console.error("[PostgresStorage] deleteQuotation error:", e);
-      return this.fallback.deleteQuotation(id);
     }
   }
 
@@ -1024,7 +1100,7 @@ export class PostgresStorage implements IStorage {
 
   async createInvoice(data: any): Promise<Invoice> {
     try {
-      const tenantId = await this.getTenantId();
+      const tenantId = data.tenantId || (await this.getTenantId());
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 15);
 
@@ -1074,13 +1150,25 @@ export class PostgresStorage implements IStorage {
           )
         )
         .returning();
-      try { await this.fallback.updateInvoice(id, data); } catch (_) {}
 
       if (updated) {
+        try { await this.fallback.updateInvoice(id, data); } catch (_) {}
         return this.mapInvoice(updated);
+      }
+
+      // Check if invoice exists in Postgres under another tenant
+      const [otherTenantInvoice] = await pgDb
+        .select({ id: pgInvoices.id })
+        .from(pgInvoices)
+        .where(eq(pgInvoices.id, id))
+        .limit(1);
+
+      if (otherTenantInvoice) {
+        return undefined as any;
       }
     } catch (e) {
       console.error("[PostgresStorage] updateInvoice error:", e);
+      throw e;
     }
     return this.fallback.updateInvoice(id, data);
   }
@@ -1088,18 +1176,20 @@ export class PostgresStorage implements IStorage {
   async deleteInvoice(id: string): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
-      await pgDb
+      const [deleted] = await pgDb
         .delete(pgInvoices)
         .where(
           and(
             eq(pgInvoices.id, id),
             eq(pgInvoices.tenantId, tenantId)
           )
-        );
-      try { await this.fallback.deleteInvoice(id); } catch (_) {}
+        )
+        .returning();
+      if (deleted) {
+        try { await this.fallback.deleteInvoice(id); } catch (_) {}
+      }
     } catch (e) {
       console.error("[PostgresStorage] deleteInvoice error:", e);
-      return this.fallback.deleteInvoice(id);
     }
   }
 
