@@ -22,3 +22,4 @@ async function upgradeUsersSchema() {
 }
 
 upgradeUsersSchema().catch(console.error);
+

@@ -64,7 +64,7 @@ import {
   attendancePolicies as pgAttendancePolicies,
   payrollFieldConfigs as pgPayrollFieldConfigs
 } from "@shared/schema.postgres";
-import { eq, or, ilike, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, or, ilike, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 
 /**
  * Enterprise PostgreSQL Storage Layer
@@ -202,9 +202,9 @@ export class PostgresStorage implements IStorage {
   async createUser(data: any): Promise<User> {
     try {
       const tenantId = await this.getTenantId();
-      const [u] = await pgDb.insert(pgUsers).values({
+      const insertValues: any = {
         tenantId,
-        firebaseUid: data.uid || data.firebaseUid || `user_${Date.now()}`,
+        firebaseUid: data.uid || data.firebaseUid || (data.id ? data.id : `user_${Date.now()}`),
         email: data.email,
         displayName: data.displayName,
         role: data.role || "employee",
@@ -230,7 +230,10 @@ export class PostgresStorage implements IStorage {
         isActive: data.isActive ?? true,
         employeeStatus: data.employeeStatus || "active",
         permissions: data.permissions || []
-      }).returning();
+      };
+      if (data.id) insertValues.id = data.id;
+
+      const [u] = await pgDb.insert(pgUsers).values(insertValues).returning();
 
       try { await this.fallback.createUser(data); } catch (_) {}
 
@@ -293,7 +296,16 @@ export class PostgresStorage implements IStorage {
 
   async getUsersByDepartment(department: string): Promise<User[]> {
     try {
-      const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.department, department.toLowerCase()));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgUsers)
+        .where(
+          and(
+            eq(pgUsers.tenantId, tenantId),
+            eq(pgUsers.department, department.toLowerCase())
+          )
+        );
       return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByDepartment error:", e);
@@ -303,7 +315,16 @@ export class PostgresStorage implements IStorage {
 
   async getUsersByDesignation(designation: string): Promise<User[]> {
     try {
-      const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.designation, designation));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgUsers)
+        .where(
+          and(
+            eq(pgUsers.tenantId, tenantId),
+            eq(pgUsers.designation, designation)
+          )
+        );
       return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByDesignation error:", e);
@@ -313,7 +334,22 @@ export class PostgresStorage implements IStorage {
 
   async getUsersByReportingManager(managerId: string): Promise<User[]> {
     try {
-      const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.reportingManagerId, managerId));
+      const tenantId = await this.getTenantId();
+      const managerUser = await this.getUser(managerId);
+      const managerKeys = [managerId];
+      if (managerUser?.id && !managerKeys.includes(managerUser.id)) managerKeys.push(managerUser.id);
+      if ((managerUser as any)?.firebaseUid && !managerKeys.includes((managerUser as any).firebaseUid)) managerKeys.push((managerUser as any).firebaseUid);
+      if ((managerUser as any)?.employeeId && !managerKeys.includes((managerUser as any).employeeId)) managerKeys.push((managerUser as any).employeeId);
+
+      const rows = await pgDb
+        .select()
+        .from(pgUsers)
+        .where(
+          and(
+            eq(pgUsers.tenantId, tenantId),
+            inArray(pgUsers.reportingManagerId, managerKeys)
+          )
+        );
       return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByReportingManager error:", e);
@@ -323,7 +359,16 @@ export class PostgresStorage implements IStorage {
 
   async getUsersByRole(role: string): Promise<User[]> {
     try {
-      const rows = await pgDb.select().from(pgUsers).where(eq(pgUsers.role, role));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgUsers)
+        .where(
+          and(
+            eq(pgUsers.tenantId, tenantId),
+            eq(pgUsers.role, role)
+          )
+        );
       return rows.map(r => this.mapUser(r));
     } catch (e) {
       console.error("[PostgresStorage] getUsersByRole error:", e);
@@ -333,8 +378,28 @@ export class PostgresStorage implements IStorage {
 
   async listDepartments(): Promise<string[]> {
     try {
-      const rows = await pgDb.select({ department: pgDepartmentTimings.department }).from(pgDepartmentTimings);
-      return rows.map(r => r.department);
+      const tenantId = await this.getTenantId();
+      const [timingRows, userRows, deptRows] = await Promise.all([
+        pgDb
+          .select({ department: pgDepartmentTimings.department })
+          .from(pgDepartmentTimings)
+          .where(eq(pgDepartmentTimings.tenantId, tenantId)),
+        pgDb
+          .select({ department: pgUsers.department })
+          .from(pgUsers)
+          .where(eq(pgUsers.tenantId, tenantId)),
+        pgDb
+          .select({ name: pgDepartments.name })
+          .from(pgDepartments)
+          .where(and(eq(pgDepartments.tenantId, tenantId), eq(pgDepartments.isActive, true)))
+      ]);
+
+      const deptSet = new Set<string>();
+      timingRows.forEach(r => r.department && deptSet.add(r.department));
+      userRows.forEach(r => r.department && deptSet.add(r.department));
+      deptRows.forEach(r => r.name && deptSet.add(r.name));
+
+      return Array.from(deptSet);
     } catch (e) {
       console.error("[PostgresStorage] listDepartments error:", e);
       return this.fallback.listDepartments();
@@ -346,7 +411,7 @@ export class PostgresStorage implements IStorage {
       const user = await this.getUser(userId);
       if (!user) return [];
 
-      const permissions: Set<string> = new Set((user.permissions as string[]) || []);
+      const permissions: Set<string> = new Set(((user as any).permissions as string[]) || []);
 
       if (user.role === "master_admin") {
         const { getEffectivePermissions } = await import("@shared/schema");
@@ -406,32 +471,42 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   // CUSTOMERS (CRM)
   // ===================================================================
+  private mapCustomer(c: any): Customer {
+    return {
+      id: c.id,
+      name: c.name,
+      mobile: c.mobile,
+      email: c.email || undefined,
+      address: c.address || undefined,
+      city: c.city || undefined,
+      state: c.state || undefined,
+      pincode: c.pincode || undefined,
+      gstin: c.gstin || undefined,
+      ebServiceNumber: c.ebServiceNumber || undefined,
+      tariffCode: c.tariffCode || undefined,
+      ebSanctionPhase: c.ebSanctionPhase as any,
+      ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
+      propertyType: c.propertyType as any,
+      scope: c.scope || undefined,
+      status: c.status || "lead",
+      assignedSalesExecId: c.assignedSalesExecId || undefined,
+      profileCompleteness: (c.ebServiceNumber && c.email) ? "full" : "basic",
+      createdFrom: "customers_page",
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt
+    } as unknown as Customer;
+  }
+
   async listCustomers(): Promise<Customer[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgCustomers)
-        .where(eq(pgCustomers.isDeleted, false))
+        .where(and(eq(pgCustomers.tenantId, tenantId), eq(pgCustomers.isDeleted, false)))
         .orderBy(desc(pgCustomers.createdAt));
 
-      return rows.map(c => ({
-        id: c.id,
-        name: c.name,
-        mobile: c.mobile,
-        email: c.email || undefined,
-        address: c.address || undefined,
-        city: c.city || undefined,
-        state: c.state || undefined,
-        pincode: c.pincode || undefined,
-        ebServiceNumber: c.ebServiceNumber || undefined,
-        tariffCode: c.tariffCode || undefined,
-        ebSanctionPhase: c.ebSanctionPhase as any,
-        ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-        propertyType: c.propertyType as any,
-        scope: c.scope || undefined,
-        status: c.status || "lead",
-        createdAt: c.createdAt
-      }));
+      return rows.map(c => this.mapCustomer(c));
     } catch (e) {
       console.error("[PostgresStorage] listCustomers error, delegating:", e);
       return this.fallback.listCustomers();
@@ -440,31 +515,21 @@ export class PostgresStorage implements IStorage {
 
   async getCustomer(id: string): Promise<Customer | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [c] = await pgDb
         .select()
         .from(pgCustomers)
-        .where(and(eq(pgCustomers.id, id), eq(pgCustomers.isDeleted, false)))
+        .where(
+          and(
+            eq(pgCustomers.id, id),
+            eq(pgCustomers.tenantId, tenantId),
+            eq(pgCustomers.isDeleted, false)
+          )
+        )
         .limit(1);
 
       if (c) {
-        return {
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile,
-          email: c.email || undefined,
-          address: c.address || undefined,
-          city: c.city || undefined,
-          state: c.state || undefined,
-          pincode: c.pincode || undefined,
-          ebServiceNumber: c.ebServiceNumber || undefined,
-          tariffCode: c.tariffCode || undefined,
-          ebSanctionPhase: c.ebSanctionPhase as any,
-          ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-          propertyType: c.propertyType as any,
-          scope: c.scope || undefined,
-          status: c.status || "lead",
-          createdAt: c.createdAt
-        };
+        return this.mapCustomer(c);
       }
     } catch (e) {
       console.error("[PostgresStorage] getCustomer error, delegating:", e);
@@ -474,36 +539,26 @@ export class PostgresStorage implements IStorage {
 
   async findCustomerByMobile(mobile: string): Promise<Customer | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [c] = await pgDb
         .select()
         .from(pgCustomers)
-        .where(and(eq(pgCustomers.mobile, mobile), eq(pgCustomers.isDeleted, false)))
+        .where(
+          and(
+            eq(pgCustomers.tenantId, tenantId),
+            eq(pgCustomers.mobile, mobile),
+            eq(pgCustomers.isDeleted, false)
+          )
+        )
         .limit(1);
 
       if (c) {
-        return {
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile,
-          email: c.email || undefined,
-          address: c.address || undefined,
-          city: c.city || undefined,
-          state: c.state || undefined,
-          pincode: c.pincode || undefined,
-          ebServiceNumber: c.ebServiceNumber || undefined,
-          tariffCode: c.tariffCode || undefined,
-          ebSanctionPhase: c.ebSanctionPhase as any,
-          ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-          propertyType: c.propertyType as any,
-          scope: c.scope || undefined,
-          status: c.status || "lead",
-          createdAt: c.createdAt
-        };
+        return this.mapCustomer(c);
       }
     } catch (e) {
       console.error("[PostgresStorage] findCustomerByMobile error, delegating:", e);
     }
-    return this.fallback.findCustomerByMobile(mobile);
+    return (this.fallback as any).findCustomerByMobile ? (this.fallback as any).findCustomerByMobile(mobile) : undefined;
   }
 
   async createCustomer(data: any): Promise<Customer> {
@@ -518,6 +573,7 @@ export class PostgresStorage implements IStorage {
         city: data.city || null,
         state: data.state || "Karnataka",
         pincode: data.pincode || null,
+        gstin: data.gstin || null,
         ebServiceNumber: data.ebServiceNumber || null,
         tariffCode: data.tariffCode || null,
         ebSanctionPhase: data.ebSanctionPhase || null,
@@ -525,29 +581,13 @@ export class PostgresStorage implements IStorage {
         propertyType: data.propertyType || "residential",
         scope: data.scope || null,
         status: data.status || "lead",
+        assignedSalesExecId: data.assignedSalesExecId || null,
         isDeleted: false
       }).returning();
 
       try { await this.fallback.createCustomer(data); } catch (_) {}
 
-      return {
-        id: c.id,
-        name: c.name,
-        mobile: c.mobile,
-        email: c.email || undefined,
-        address: c.address || undefined,
-        city: c.city || undefined,
-        state: c.state || undefined,
-        pincode: c.pincode || undefined,
-        ebServiceNumber: c.ebServiceNumber || undefined,
-        tariffCode: c.tariffCode || undefined,
-        ebSanctionPhase: c.ebSanctionPhase as any,
-        ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-        propertyType: c.propertyType as any,
-        scope: c.scope || undefined,
-        status: c.status || "lead",
-        createdAt: c.createdAt
-      };
+      return this.mapCustomer(c);
     } catch (e) {
       console.error("[PostgresStorage] createCustomer error, using fallback:", e);
       return this.fallback.createCustomer(data);
@@ -556,6 +596,7 @@ export class PostgresStorage implements IStorage {
 
   async updateCustomer(id: string, data: any): Promise<Customer> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.mobile !== undefined) updateValues.mobile = data.mobile;
@@ -564,6 +605,7 @@ export class PostgresStorage implements IStorage {
       if (data.city !== undefined) updateValues.city = data.city;
       if (data.state !== undefined) updateValues.state = data.state;
       if (data.pincode !== undefined) updateValues.pincode = data.pincode;
+      if (data.gstin !== undefined) updateValues.gstin = data.gstin;
       if (data.ebServiceNumber !== undefined) updateValues.ebServiceNumber = data.ebServiceNumber;
       if (data.tariffCode !== undefined) updateValues.tariffCode = data.tariffCode;
       if (data.ebSanctionPhase !== undefined) updateValues.ebSanctionPhase = data.ebSanctionPhase;
@@ -571,34 +613,24 @@ export class PostgresStorage implements IStorage {
       if (data.propertyType !== undefined) updateValues.propertyType = data.propertyType;
       if (data.scope !== undefined) updateValues.scope = data.scope;
       if (data.status !== undefined) updateValues.status = data.status;
+      if (data.assignedSalesExecId !== undefined) updateValues.assignedSalesExecId = data.assignedSalesExecId;
+      if (data.isDeleted !== undefined) updateValues.isDeleted = data.isDeleted;
 
       const [c] = await pgDb
         .update(pgCustomers)
         .set(updateValues)
-        .where(eq(pgCustomers.id, id))
+        .where(
+          and(
+            eq(pgCustomers.id, id),
+            eq(pgCustomers.tenantId, tenantId)
+          )
+        )
         .returning();
 
       try { await this.fallback.updateCustomer(id, data); } catch (_) {}
 
       if (c) {
-        return {
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile,
-          email: c.email || undefined,
-          address: c.address || undefined,
-          city: c.city || undefined,
-          state: c.state || undefined,
-          pincode: c.pincode || undefined,
-          ebServiceNumber: c.ebServiceNumber || undefined,
-          tariffCode: c.tariffCode || undefined,
-          ebSanctionPhase: c.ebSanctionPhase as any,
-          ebSanctionKW: c.ebSanctionKW ? Number(c.ebSanctionKW) : undefined,
-          propertyType: c.propertyType as any,
-          scope: c.scope || undefined,
-          status: c.status || "lead",
-          createdAt: c.createdAt
-        };
+        return this.mapCustomer(c);
       }
     } catch (e) {
       console.error("[PostgresStorage] updateCustomer error, using fallback:", e);
@@ -608,10 +640,16 @@ export class PostgresStorage implements IStorage {
 
   async deleteCustomer(id: string): Promise<void> {
     try {
+      const tenantId = await this.getTenantId();
       await pgDb
         .update(pgCustomers)
         .set({ isDeleted: true, updatedAt: new Date() })
-        .where(eq(pgCustomers.id, id));
+        .where(
+          and(
+            eq(pgCustomers.id, id),
+            eq(pgCustomers.tenantId, tenantId)
+          )
+        );
 
       try { await this.fallback.deleteCustomer(id); } catch (_) {}
     } catch (e) {
@@ -625,9 +663,11 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   async listActivityLogs(limit = 10): Promise<ActivityLog[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgActivityLogs)
+        .where(eq(pgActivityLogs.tenantId, tenantId))
         .orderBy(desc(pgActivityLogs.createdAt))
         .limit(limit);
 
@@ -707,7 +747,7 @@ export class PostgresStorage implements IStorage {
       updatedBy: q.updatedBy || undefined,
       createdAt: q.createdAt,
       updatedAt: q.updatedAt
-    } as Quotation;
+    } as unknown as Quotation;
   }
 
   async listQuotations(): Promise<Quotation[]> {
@@ -727,7 +767,17 @@ export class PostgresStorage implements IStorage {
 
   async getQuotation(id: string): Promise<Quotation | undefined> {
     try {
-      const [q] = await pgDb.select().from(pgQuotations).where(eq(pgQuotations.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [q] = await pgDb
+        .select()
+        .from(pgQuotations)
+        .where(
+          and(
+            eq(pgQuotations.id, id),
+            eq(pgQuotations.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (q) {
         return this.mapQuotation(q);
       }
@@ -813,10 +863,16 @@ export class PostgresStorage implements IStorage {
       if (data.internalNotes !== undefined) updateValues.internalNotes = data.internalNotes;
       if (data.validUntil !== undefined) updateValues.validUntil = data.validUntil ? new Date(data.validUntil) : null;
 
+      const tenantId = await this.getTenantId();
       const [updated] = await pgDb
         .update(pgQuotations)
         .set(updateValues)
-        .where(eq(pgQuotations.id, id))
+        .where(
+          and(
+            eq(pgQuotations.id, id),
+            eq(pgQuotations.tenantId, tenantId)
+          )
+        )
         .returning();
 
       try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) {}
@@ -832,7 +888,15 @@ export class PostgresStorage implements IStorage {
 
   async deleteQuotation(id: string): Promise<void> {
     try {
-      await pgDb.delete(pgQuotations).where(eq(pgQuotations.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgQuotations)
+        .where(
+          and(
+            eq(pgQuotations.id, id),
+            eq(pgQuotations.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.deleteQuotation(id); } catch (_) {}
     } catch (e) {
       console.error("[PostgresStorage] deleteQuotation error:", e);
@@ -872,7 +936,17 @@ export class PostgresStorage implements IStorage {
 
   async getInvoice(id: string): Promise<Invoice | undefined> {
     try {
-      const [inv] = await pgDb.select().from(pgInvoices).where(eq(pgInvoices.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [inv] = await pgDb
+        .select()
+        .from(pgInvoices)
+        .where(
+          and(
+            eq(pgInvoices.id, id),
+            eq(pgInvoices.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (inv) {
         return this.mapInvoice(inv);
       }
@@ -912,6 +986,7 @@ export class PostgresStorage implements IStorage {
 
   async updateInvoice(id: string, data: any): Promise<Invoice> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.status !== undefined) updateValues.status = data.status;
       if (data.total !== undefined) {
@@ -924,7 +999,16 @@ export class PostgresStorage implements IStorage {
       if (data.paymentTerms !== undefined) updateValues.paymentTerms = data.paymentTerms;
       if (data.notes !== undefined) updateValues.notes = data.notes;
 
-      const [updated] = await pgDb.update(pgInvoices).set(updateValues).where(eq(pgInvoices.id, id)).returning();
+      const [updated] = await pgDb
+        .update(pgInvoices)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgInvoices.id, id),
+            eq(pgInvoices.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateInvoice(id, data); } catch (_) {}
 
       if (updated) {
@@ -938,7 +1022,15 @@ export class PostgresStorage implements IStorage {
 
   async deleteInvoice(id: string): Promise<void> {
     try {
-      await pgDb.delete(pgInvoices).where(eq(pgInvoices.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgInvoices)
+        .where(
+          and(
+            eq(pgInvoices.id, id),
+            eq(pgInvoices.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.deleteInvoice(id); } catch (_) {}
     } catch (e) {
       console.error("[PostgresStorage] deleteInvoice error:", e);
@@ -959,12 +1051,21 @@ export class PostgresStorage implements IStorage {
   }): Promise<{ payment: any; invoice: Invoice }> {
     try {
       return await pgDb.transaction(async (tx) => {
-        const [inv] = await tx.select().from(pgInvoices).where(eq(pgInvoices.id, data.invoiceId)).limit(1);
+        const tenantId = await this.getTenantId();
+        const [inv] = await tx
+          .select()
+          .from(pgInvoices)
+          .where(
+            and(
+              eq(pgInvoices.id, data.invoiceId),
+              eq(pgInvoices.tenantId, tenantId)
+            )
+          )
+          .limit(1);
         if (!inv) {
           throw new Error(`Invoice ${data.invoiceId} not found`);
         }
 
-        const tenantId = inv.tenantId || (await this.getTenantId());
         const totalAmount = Number(inv.totalAmount);
         const prevPaid = Number(inv.amountPaid || 0);
         const newPaid = prevPaid + data.amount;
@@ -986,12 +1087,21 @@ export class PostgresStorage implements IStorage {
           status: "completed"
         }).returning();
 
-        const [updatedInv] = await tx.update(pgInvoices).set({
-          amountPaid: String(newPaid),
-          balanceDue: String(balanceDue),
-          status: newStatus,
-          updatedAt: new Date()
-        }).where(eq(pgInvoices.id, data.invoiceId)).returning();
+        const [updatedInv] = await tx
+          .update(pgInvoices)
+          .set({
+            amountPaid: String(newPaid),
+            balanceDue: String(balanceDue),
+            status: newStatus,
+            updatedAt: new Date()
+          })
+          .where(
+            and(
+              eq(pgInvoices.id, data.invoiceId),
+              eq(pgInvoices.tenantId, tenantId)
+            )
+          )
+          .returning();
 
         return {
           payment,
@@ -1014,7 +1124,17 @@ export class PostgresStorage implements IStorage {
 
   async listPaymentsByInvoice(invoiceId: string): Promise<any[]> {
     try {
-      return await pgDb.select().from(pgPayments).where(eq(pgPayments.invoiceId, invoiceId)).orderBy(desc(pgPayments.paymentDate));
+      const tenantId = await this.getTenantId();
+      return await pgDb
+        .select()
+        .from(pgPayments)
+        .where(
+          and(
+            eq(pgPayments.invoiceId, invoiceId),
+            eq(pgPayments.tenantId, tenantId)
+          )
+        )
+        .orderBy(desc(pgPayments.paymentDate));
     } catch (e) {
       console.error("[PostgresStorage] listPaymentsByInvoice error:", e);
       return [];
@@ -1024,10 +1144,71 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   // PRODUCTS & INVENTORY
   // ===================================================================
+  // PRODUCTS & INVENTORY
+  // ===================================================================
+  private mapProduct(p: any): any {
+    return {
+      id: p.id,
+      tenantId: p.tenantId,
+      name: p.name,
+      sku: p.sku,
+      category: p.category,
+      brand: p.brand || null,
+      model: p.model || null,
+      specifications: p.specifications || {},
+      unit: p.unit || 'Nos',
+      purchasePrice: Number(p.purchasePrice) || 0,
+      sellingPrice: Number(p.sellingPrice) || 0,
+      currentStock: Number(p.currentStock) || 0,
+      minimumStock: Number(p.minimumStock) || 0,
+      status: p.status,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    };
+  }
+
   async listProducts(filters?: { search?: string; category?: string; page?: number; limit?: number }): Promise<{ products: any[]; total: number }> {
     try {
-      const rows = await pgDb.select().from(pgProducts).orderBy(desc(pgProducts.createdAt));
-      return { products: rows, total: rows.length };
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgProducts.tenantId, tenantId)];
+
+      if (filters?.category && filters.category !== 'all') {
+        conditions.push(eq(pgProducts.category, filters.category));
+      }
+
+      if (filters?.search && filters.search.trim()) {
+        const searchTerm = `%${filters.search.trim()}%`;
+        conditions.push(
+          or(
+            ilike(pgProducts.name, searchTerm),
+            ilike(pgProducts.sku, searchTerm),
+            ilike(pgProducts.brand, searchTerm),
+            ilike(pgProducts.model, searchTerm)
+          )
+        );
+      }
+
+      const [{ count }] = await pgDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(pgProducts)
+        .where(and(...conditions));
+
+      const page = Math.max(1, Number(filters?.page) || 1);
+      const limit = Math.max(1, Math.min(100, Number(filters?.limit) || 50));
+      const offset = (page - 1) * limit;
+
+      const rows = await pgDb
+        .select()
+        .from(pgProducts)
+        .where(and(...conditions))
+        .orderBy(desc(pgProducts.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        products: rows.map(p => this.mapProduct(p)),
+        total: count
+      };
     } catch (e) {
       console.error("[PostgresStorage] listProducts error:", e);
       return { products: [], total: 0 };
@@ -1036,8 +1217,13 @@ export class PostgresStorage implements IStorage {
 
   async getProduct(id: string): Promise<any | undefined> {
     try {
-      const [p] = await pgDb.select().from(pgProducts).where(eq(pgProducts.id, id)).limit(1);
-      return p;
+      const tenantId = await this.getTenantId();
+      const [p] = await pgDb
+        .select()
+        .from(pgProducts)
+        .where(and(eq(pgProducts.id, id), eq(pgProducts.tenantId, tenantId)))
+        .limit(1);
+      return p ? this.mapProduct(p) : undefined;
     } catch (e) {
       console.error("[PostgresStorage] getProduct error:", e);
       return undefined;
@@ -1047,6 +1233,10 @@ export class PostgresStorage implements IStorage {
   async createProduct(data: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
+      const curStock = Number(data.currentStock) || 0;
+      const minStock = Number(data.minimumStock) || 5;
+      const calculatedStatus = curStock <= 0 ? 'out_of_stock' : (curStock <= minStock ? 'low_stock' : 'in_stock');
+
       const [p] = await pgDb.insert(pgProducts).values({
         tenantId,
         name: data.name,
@@ -1058,11 +1248,11 @@ export class PostgresStorage implements IStorage {
         unit: data.unit || 'Nos',
         purchasePrice: String(data.purchasePrice || 0),
         sellingPrice: String(data.sellingPrice || 0),
-        currentStock: Number(data.currentStock) || 0,
-        minimumStock: Number(data.minimumStock) || 5,
-        status: Number(data.currentStock) <= 0 ? 'out_of_stock' : (Number(data.currentStock) <= (Number(data.minimumStock) || 5) ? 'low_stock' : 'in_stock')
+        currentStock: curStock,
+        minimumStock: minStock,
+        status: data.status || calculatedStatus
       }).returning();
-      return p;
+      return this.mapProduct(p);
     } catch (e) {
       console.error("[PostgresStorage] createProduct error:", e);
       throw e;
@@ -1071,8 +1261,20 @@ export class PostgresStorage implements IStorage {
 
   async updateProduct(id: string, data: any): Promise<any> {
     try {
+      const tenantId = await this.getTenantId();
+      const [existing] = await pgDb
+        .select()
+        .from(pgProducts)
+        .where(and(eq(pgProducts.id, id), eq(pgProducts.tenantId, tenantId)))
+        .limit(1);
+
+      if (!existing) {
+        throw new Error(`Product ${id} not found`);
+      }
+
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
+      if (data.sku !== undefined) updateValues.sku = data.sku;
       if (data.category !== undefined) updateValues.category = data.category;
       if (data.brand !== undefined) updateValues.brand = data.brand;
       if (data.model !== undefined) updateValues.model = data.model;
@@ -1080,14 +1282,26 @@ export class PostgresStorage implements IStorage {
       if (data.unit !== undefined) updateValues.unit = data.unit;
       if (data.purchasePrice !== undefined) updateValues.purchasePrice = String(data.purchasePrice);
       if (data.sellingPrice !== undefined) updateValues.sellingPrice = String(data.sellingPrice);
-      if (data.currentStock !== undefined) {
-        updateValues.currentStock = Number(data.currentStock);
-        updateValues.status = Number(data.currentStock) <= 0 ? 'out_of_stock' : 'in_stock';
-      }
-      if (data.minimumStock !== undefined) updateValues.minimumStock = Number(data.minimumStock);
 
-      const [p] = await pgDb.update(pgProducts).set(updateValues).where(eq(pgProducts.id, id)).returning();
-      return p;
+      const newStock = data.currentStock !== undefined ? Number(data.currentStock) : existing.currentStock;
+      const minStock = data.minimumStock !== undefined ? Number(data.minimumStock) : existing.minimumStock;
+
+      if (data.currentStock !== undefined) updateValues.currentStock = newStock;
+      if (data.minimumStock !== undefined) updateValues.minimumStock = minStock;
+
+      if (data.status !== undefined) {
+        updateValues.status = data.status;
+      } else if (data.currentStock !== undefined || data.minimumStock !== undefined) {
+        updateValues.status = newStock <= 0 ? 'out_of_stock' : (newStock <= minStock ? 'low_stock' : 'in_stock');
+      }
+
+      const [p] = await pgDb
+        .update(pgProducts)
+        .set(updateValues)
+        .where(and(eq(pgProducts.id, id), eq(pgProducts.tenantId, tenantId)))
+        .returning();
+
+      return p ? this.mapProduct(p) : undefined;
     } catch (e) {
       console.error("[PostgresStorage] updateProduct error:", e);
       throw e;
@@ -1096,7 +1310,10 @@ export class PostgresStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<void> {
     try {
-      await pgDb.delete(pgProducts).where(eq(pgProducts.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgProducts)
+        .where(and(eq(pgProducts.id, id), eq(pgProducts.tenantId, tenantId)));
     } catch (e) {
       console.error("[PostgresStorage] deleteProduct error:", e);
       throw e;
@@ -1130,12 +1347,22 @@ export class PostgresStorage implements IStorage {
       remarks: att.remarks,
       otSessions: (att.otSessions as any[]) || [],
       createdAt: att.createdAt
-    } as Attendance;
+    } as unknown as Attendance;
   }
 
   async getAttendance(id: string): Promise<Attendance | undefined> {
     try {
-      const [att] = await pgDb.select().from(pgAttendance).where(eq(pgAttendance.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [att] = await pgDb
+        .select()
+        .from(pgAttendance)
+        .where(
+          and(
+            eq(pgAttendance.id, id),
+            eq(pgAttendance.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (att) return this.mapAttendance(att);
     } catch (e) {
       console.error("[PostgresStorage] getAttendance error:", e);
@@ -1145,6 +1372,7 @@ export class PostgresStorage implements IStorage {
 
   async getAttendanceByUserAndDate(userId: string, date: Date): Promise<Attendance | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
@@ -1154,6 +1382,7 @@ export class PostgresStorage implements IStorage {
         .select()
         .from(pgAttendance)
         .where(and(
+          eq(pgAttendance.tenantId, tenantId),
           eq(pgAttendance.userId, userId),
           sql`${pgAttendance.date} >= ${start.toISOString()} AND ${pgAttendance.date} <= ${end.toISOString()}`
         ))
@@ -1168,10 +1397,16 @@ export class PostgresStorage implements IStorage {
 
   async listAttendanceByUser(userId: string): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgAttendance)
-        .where(eq(pgAttendance.userId, userId))
+        .where(
+          and(
+            eq(pgAttendance.tenantId, tenantId),
+            eq(pgAttendance.userId, userId)
+          )
+        )
         .orderBy(desc(pgAttendance.date));
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
@@ -1182,6 +1417,7 @@ export class PostgresStorage implements IStorage {
 
   async listAttendanceByDate(date: Date): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
@@ -1190,7 +1426,12 @@ export class PostgresStorage implements IStorage {
       const rows = await pgDb
         .select()
         .from(pgAttendance)
-        .where(sql`${pgAttendance.date} >= ${start.toISOString()} AND ${pgAttendance.date} <= ${end.toISOString()}`)
+        .where(
+          and(
+            eq(pgAttendance.tenantId, tenantId),
+            sql`${pgAttendance.date} >= ${start.toISOString()} AND ${pgAttendance.date} <= ${end.toISOString()}`
+          )
+        )
         .orderBy(desc(pgAttendance.createdAt));
 
       return rows.map(r => this.mapAttendance(r));
@@ -1235,6 +1476,7 @@ export class PostgresStorage implements IStorage {
 
   async updateAttendance(id: string, data: any): Promise<Attendance> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.checkInTime !== undefined) updateValues.checkInTime = data.checkInTime ? new Date(data.checkInTime) : null;
       if (data.checkOutTime !== undefined) updateValues.checkOutTime = data.checkOutTime ? new Date(data.checkOutTime) : null;
@@ -1252,7 +1494,16 @@ export class PostgresStorage implements IStorage {
       if (data.remarks !== undefined) updateValues.remarks = data.remarks;
       if (data.otSessions !== undefined) updateValues.otSessions = Array.isArray(data.otSessions) ? data.otSessions : [];
 
-      const [updated] = await pgDb.update(pgAttendance).set(updateValues).where(eq(pgAttendance.id, id)).returning();
+      const [updated] = await pgDb
+        .update(pgAttendance)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgAttendance.id, id),
+            eq(pgAttendance.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateAttendance(id, data); } catch (_) {}
       if (updated) return this.mapAttendance(updated);
     } catch (e) {
@@ -1267,31 +1518,40 @@ export class PostgresStorage implements IStorage {
 
   async listAttendance(filters: { userId?: string; startDate?: string; endDate?: string; status?: string; adminReviewStatus?: string } = {}): Promise<any[]> {
     try {
-      const conditions: any[] = [];
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgAttendance.tenantId, tenantId)];
       if (filters.userId) conditions.push(eq(pgAttendance.userId, filters.userId));
       if (filters.startDate) conditions.push(gte(pgAttendance.date, new Date(filters.startDate)));
       if (filters.endDate) conditions.push(lte(pgAttendance.date, new Date(filters.endDate)));
       if (filters.status) conditions.push(eq(pgAttendance.status, filters.status));
       if (filters.adminReviewStatus) conditions.push(eq(pgAttendance.adminReviewStatus, filters.adminReviewStatus));
 
-      const query = pgDb.select().from(pgAttendance);
-      const rows = conditions.length > 0 
-        ? await query.where(and(...conditions)).orderBy(desc(pgAttendance.date))
-        : await query.orderBy(desc(pgAttendance.date));
+      const rows = await pgDb
+        .select()
+        .from(pgAttendance)
+        .where(and(...conditions))
+        .orderBy(desc(pgAttendance.date));
 
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
       console.error("[PostgresStorage] listAttendance error, delegating:", e);
-      return this.fallback.listAttendance(filters);
+      return (this.fallback as any).listAttendance ? (this.fallback as any).listAttendance(filters) : [];
     }
   }
 
   async listAttendanceBetweenDates(startDate: Date, endDate: Date): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgAttendance)
-        .where(and(gte(pgAttendance.date, startDate), lte(pgAttendance.date, endDate)))
+        .where(
+          and(
+            eq(pgAttendance.tenantId, tenantId),
+            gte(pgAttendance.date, startDate),
+            lte(pgAttendance.date, endDate)
+          )
+        )
         .orderBy(desc(pgAttendance.date));
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
@@ -1302,10 +1562,12 @@ export class PostgresStorage implements IStorage {
 
   async listAttendanceByUserBetweenDates(userId: string, startDate: Date, endDate: Date): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgAttendance)
         .where(and(
+          eq(pgAttendance.tenantId, tenantId),
           eq(pgAttendance.userId, userId),
           gte(pgAttendance.date, startDate),
           lte(pgAttendance.date, endDate)
@@ -1324,10 +1586,16 @@ export class PostgresStorage implements IStorage {
 
   async listAttendanceByReviewStatus(status: string): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgAttendance)
-        .where(eq(pgAttendance.adminReviewStatus, status))
+        .where(
+          and(
+            eq(pgAttendance.tenantId, tenantId),
+            eq(pgAttendance.adminReviewStatus, status)
+          )
+        )
         .orderBy(desc(pgAttendance.date));
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
@@ -1338,6 +1606,7 @@ export class PostgresStorage implements IStorage {
 
   async listIncompleteAttendance(date: Date): Promise<Attendance[]> {
     try {
+      const tenantId = await this.getTenantId();
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
@@ -1347,6 +1616,7 @@ export class PostgresStorage implements IStorage {
         .select()
         .from(pgAttendance)
         .where(and(
+          eq(pgAttendance.tenantId, tenantId),
           gte(pgAttendance.date, start),
           lte(pgAttendance.date, end),
           sql`${pgAttendance.checkInTime} IS NOT NULL AND ${pgAttendance.checkOutTime} IS NULL`
@@ -1360,6 +1630,7 @@ export class PostgresStorage implements IStorage {
 
   async getApprovedLeaveForDate(userId: string, date: Date): Promise<LeaveApplication | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const checkDate = new Date(date);
       checkDate.setHours(0, 0, 0, 0);
 
@@ -1367,6 +1638,7 @@ export class PostgresStorage implements IStorage {
         .select()
         .from(pgLeaveApplications)
         .where(and(
+          eq(pgLeaveApplications.tenantId, tenantId),
           eq(pgLeaveApplications.userId, userId),
           eq(pgLeaveApplications.status, "approved"),
           or(
@@ -1376,9 +1648,9 @@ export class PostgresStorage implements IStorage {
         ));
 
       for (const row of rows) {
-        const start = new Date(row.startDate);
+        const start = new Date(row.startDate as any);
         start.setHours(0, 0, 0, 0);
-        const end = new Date(row.endDate);
+        const end = new Date(row.endDate as any);
         end.setHours(23, 59, 59, 999);
         if (checkDate >= start && checkDate <= end) {
           return {
@@ -1398,20 +1670,24 @@ export class PostgresStorage implements IStorage {
             hrApprovalStatus: row.hrApprovalStatus || undefined,
             managerRemarks: row.managerRemarks || undefined,
             hrRemarks: row.hrRemarks || undefined
-          } as LeaveApplication;
+          } as unknown as LeaveApplication;
         }
       }
       return undefined;
     } catch (e) {
       console.error("[PostgresStorage] getApprovedLeaveForDate error:", e);
-      return this.fallback.getApprovedLeaveForDate(userId, date);
+      return (this.fallback as any).getApprovedLeaveForDate ? (this.fallback as any).getApprovedLeaveForDate(userId, date) : undefined;
     }
   }
 
   async addOTSessionTransaction(attendanceId: string, sessionData: any): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
-      const [att] = await pgDb.select().from(pgAttendance).where(eq(pgAttendance.id, attendanceId)).limit(1);
+      const [att] = await pgDb
+        .select()
+        .from(pgAttendance)
+        .where(and(eq(pgAttendance.id, attendanceId), eq(pgAttendance.tenantId, tenantId)))
+        .limit(1);
       if (!att) {
         throw new Error("Attendance record not found");
       }
@@ -1431,7 +1707,7 @@ export class PostgresStorage implements IStorage {
           overtimeHours: String(totalOTHours),
           updatedAt: new Date()
         })
-        .where(eq(pgAttendance.id, attendanceId));
+        .where(and(eq(pgAttendance.id, attendanceId), eq(pgAttendance.tenantId, tenantId)));
 
       try {
         await pgDb.insert(pgOtSessions).values({
@@ -1458,10 +1734,12 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   async getLeaveBalance(userId: string, month: number, year: number): Promise<LeaveBalance | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [lb] = await pgDb
         .select()
         .from(pgLeaveBalances)
         .where(and(
+          eq(pgLeaveBalances.tenantId, tenantId),
           eq(pgLeaveBalances.userId, userId),
           eq(pgLeaveBalances.year, year),
           eq(pgLeaveBalances.month, month)
@@ -1469,7 +1747,7 @@ export class PostgresStorage implements IStorage {
         .limit(1);
 
       if (lb) {
-        return {
+        return ({
           id: lb.id,
           userId: lb.userId,
           employeeId: lb.userId,
@@ -1479,7 +1757,7 @@ export class PostgresStorage implements IStorage {
           casualLeaveUsed: lb.casualLeaveUsed,
           permissionHoursBalance: lb.permissionHoursBalance,
           permissionHoursUsed: lb.permissionHoursUsed
-        };
+        } as unknown) as LeaveBalance;
       }
     } catch (e) {
       console.error("[PostgresStorage] getLeaveBalance error:", e);
@@ -1500,14 +1778,14 @@ export class PostgresStorage implements IStorage {
         userId: data.userId || data.employeeId,
         year: Number(data.year),
         month: Number(data.month),
-        casualLeaveBalance: Number(data.casualLeaveBalance ?? 1),
-        casualLeaveUsed: Number(data.casualLeaveUsed ?? 0),
-        permissionHoursBalance: Number(data.permissionHoursBalance ?? 2),
-        permissionHoursUsed: Number(data.permissionHoursUsed ?? 0)
+        casualLeaveBalance: String(data.casualLeaveBalance ?? 1),
+        casualLeaveUsed: String(data.casualLeaveUsed ?? 0),
+        permissionHoursBalance: String(data.permissionHoursBalance ?? 2),
+        permissionHoursUsed: String(data.permissionHoursUsed ?? 0)
       }).returning();
 
       try { await this.fallback.createLeaveBalance(data); } catch (_) {}
-      return {
+      return ({
         id: lb.id,
         userId: lb.userId,
         employeeId: lb.userId,
@@ -1517,7 +1795,7 @@ export class PostgresStorage implements IStorage {
         casualLeaveUsed: lb.casualLeaveUsed,
         permissionHoursBalance: lb.permissionHoursBalance,
         permissionHoursUsed: lb.permissionHoursUsed
-      } as LeaveBalance;
+      } as unknown) as LeaveBalance;
     } catch (e) {
       console.error("[PostgresStorage] createLeaveBalance error:", e);
       return this.fallback.createLeaveBalance(data);
@@ -1526,16 +1804,26 @@ export class PostgresStorage implements IStorage {
 
   async updateLeaveBalance(id: string, data: any): Promise<LeaveBalance> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
-      if (data.casualLeaveBalance !== undefined) updateValues.casualLeaveBalance = Number(data.casualLeaveBalance);
-      if (data.casualLeaveUsed !== undefined) updateValues.casualLeaveUsed = Number(data.casualLeaveUsed);
-      if (data.permissionHoursBalance !== undefined) updateValues.permissionHoursBalance = Number(data.permissionHoursBalance);
-      if (data.permissionHoursUsed !== undefined) updateValues.permissionHoursUsed = Number(data.permissionHoursUsed);
+      if (data.casualLeaveBalance !== undefined) updateValues.casualLeaveBalance = String(data.casualLeaveBalance);
+      if (data.casualLeaveUsed !== undefined) updateValues.casualLeaveUsed = String(data.casualLeaveUsed);
+      if (data.permissionHoursBalance !== undefined) updateValues.permissionHoursBalance = String(data.permissionHoursBalance);
+      if (data.permissionHoursUsed !== undefined) updateValues.permissionHoursUsed = String(data.permissionHoursUsed);
 
-      const [lb] = await pgDb.update(pgLeaveBalances).set(updateValues).where(eq(pgLeaveBalances.id, id)).returning();
+      const [lb] = await pgDb
+        .update(pgLeaveBalances)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgLeaveBalances.id, id),
+            eq(pgLeaveBalances.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateLeaveBalance(id, data); } catch (_) {}
       if (lb) {
-        return {
+        return ({
           id: lb.id,
           userId: lb.userId,
           employeeId: lb.userId,
@@ -1545,7 +1833,7 @@ export class PostgresStorage implements IStorage {
           casualLeaveUsed: lb.casualLeaveUsed,
           permissionHoursBalance: lb.permissionHoursBalance,
           permissionHoursUsed: lb.permissionHoursUsed
-        } as LeaveBalance;
+        } as unknown) as LeaveBalance;
       }
     } catch (e) {
       console.error("[PostgresStorage] updateLeaveBalance error:", e);
@@ -1555,7 +1843,16 @@ export class PostgresStorage implements IStorage {
 
   async listLeaveBalancesByYear(year: number): Promise<LeaveBalance[]> {
     try {
-      const rows = await pgDb.select().from(pgLeaveBalances).where(eq(pgLeaveBalances.year, year));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgLeaveBalances)
+        .where(
+          and(
+            eq(pgLeaveBalances.tenantId, tenantId),
+            eq(pgLeaveBalances.year, year)
+          )
+        );
       return rows.map(lb => ({
         id: lb.id,
         userId: lb.userId,
@@ -1566,7 +1863,7 @@ export class PostgresStorage implements IStorage {
         casualLeaveUsed: lb.casualLeaveUsed,
         permissionHoursBalance: lb.permissionHoursBalance,
         permissionHoursUsed: lb.permissionHoursUsed
-      } as LeaveBalance));
+      } as unknown) as LeaveBalance);
     } catch (e) {
       console.error("[PostgresStorage] listLeaveBalancesByYear error:", e);
       return this.fallback.listLeaveBalancesByYear(year);
@@ -1575,11 +1872,13 @@ export class PostgresStorage implements IStorage {
 
   async resetMonthlyLeaveBalances(month: number, year: number): Promise<void> {
     try {
+      const tenantId = await this.getTenantId();
       const usersList = await this.listUsers();
       for (const u of usersList) {
         const existing = await this.getLeaveBalance(u.id, month, year);
         if (!existing) {
           await this.createLeaveBalance({
+            tenantId,
             userId: u.id,
             employeeId: u.id,
             month,
@@ -1614,12 +1913,22 @@ export class PostgresStorage implements IStorage {
       applicationDate: app.createdAt,
       createdAt: app.createdAt,
       updatedAt: app.updatedAt
-    } as LeaveApplication;
+    } as unknown as LeaveApplication;
   }
 
   async getLeaveApplication(id: string): Promise<LeaveApplication | undefined> {
     try {
-      const [app] = await pgDb.select().from(pgLeaveApplications).where(eq(pgLeaveApplications.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [app] = await pgDb
+        .select()
+        .from(pgLeaveApplications)
+        .where(
+          and(
+            eq(pgLeaveApplications.id, id),
+            eq(pgLeaveApplications.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (app) return this.mapLeaveApp(app);
     } catch (e) {
       console.error("[PostgresStorage] getLeaveApplication error:", e);
@@ -1670,11 +1979,21 @@ export class PostgresStorage implements IStorage {
 
   async updateLeaveApplication(id: string, data: any): Promise<LeaveApplication> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.status !== undefined) updateValues.status = data.status;
       if (data.approvedBy !== undefined) updateValues.approvedBy = data.approvedBy;
 
-      const [updated] = await pgDb.update(pgLeaveApplications).set(updateValues).where(eq(pgLeaveApplications.id, id)).returning();
+      const [updated] = await pgDb
+        .update(pgLeaveApplications)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgLeaveApplications.id, id),
+            eq(pgLeaveApplications.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateLeaveApplication(id, data); } catch (_) {}
       if (updated) return this.mapLeaveApp(updated);
     } catch (e) {
@@ -1685,7 +2004,17 @@ export class PostgresStorage implements IStorage {
 
   async listLeaveApplicationsByUser(userId: string): Promise<LeaveApplication[]> {
     try {
-      const rows = await pgDb.select().from(pgLeaveApplications).where(eq(pgLeaveApplications.userId, userId)).orderBy(desc(pgLeaveApplications.createdAt));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgLeaveApplications)
+        .where(
+          and(
+            eq(pgLeaveApplications.tenantId, tenantId),
+            eq(pgLeaveApplications.userId, userId)
+          )
+        )
+        .orderBy(desc(pgLeaveApplications.createdAt));
       return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByUser error:", e);
@@ -1695,10 +2024,39 @@ export class PostgresStorage implements IStorage {
 
   async listLeaveApplicationsByManager(managerId: string, status?: string): Promise<LeaveApplication[]> {
     try {
-      let query = pgDb.select().from(pgLeaveApplications);
-      const rows = status
-        ? await query.where(eq(pgLeaveApplications.status, status)).orderBy(desc(pgLeaveApplications.createdAt))
-        : await query.orderBy(desc(pgLeaveApplications.createdAt));
+      const tenantId = await this.getTenantId();
+      // Find all reportees belonging to this tenant
+      const managerUser = await this.getUser(managerId);
+      const managerIdentifiers = [managerId];
+      if (managerUser?.id && !managerIdentifiers.includes(managerUser.id)) managerIdentifiers.push(managerUser.id);
+      if ((managerUser as any)?.firebaseUid && !managerIdentifiers.includes((managerUser as any).firebaseUid)) managerIdentifiers.push((managerUser as any).firebaseUid);
+      if ((managerUser as any)?.employeeId && !managerIdentifiers.includes((managerUser as any).employeeId)) managerIdentifiers.push((managerUser as any).employeeId);
+
+      const teamUsers = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(
+          and(
+            eq(pgUsers.tenantId, tenantId),
+            inArray(pgUsers.reportingManagerId, managerIdentifiers)
+          )
+        );
+
+      const teamUserIds = teamUsers.map(u => u.id);
+      if (teamUserIds.length === 0) return [];
+
+      const conditions: any[] = [
+        eq(pgLeaveApplications.tenantId, tenantId),
+        inArray(pgLeaveApplications.userId, teamUserIds)
+      ];
+      if (status) conditions.push(eq(pgLeaveApplications.status, status));
+
+      const rows = await pgDb
+        .select()
+        .from(pgLeaveApplications)
+        .where(and(...conditions))
+        .orderBy(desc(pgLeaveApplications.createdAt));
+
       return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByManager error:", e);
@@ -1708,10 +2066,16 @@ export class PostgresStorage implements IStorage {
 
   async listLeaveApplicationsByHR(status?: string): Promise<LeaveApplication[]> {
     try {
-      let query = pgDb.select().from(pgLeaveApplications);
-      const rows = status
-        ? await query.where(eq(pgLeaveApplications.status, status)).orderBy(desc(pgLeaveApplications.createdAt))
-        : await query.orderBy(desc(pgLeaveApplications.createdAt));
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgLeaveApplications.tenantId, tenantId)];
+      if (status) conditions.push(eq(pgLeaveApplications.status, status));
+
+      const rows = await pgDb
+        .select()
+        .from(pgLeaveApplications)
+        .where(and(...conditions))
+        .orderBy(desc(pgLeaveApplications.createdAt));
+
       return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listLeaveApplicationsByHR error:", e);
@@ -1721,7 +2085,19 @@ export class PostgresStorage implements IStorage {
 
   async listAllLeaveApplications(filters?: any): Promise<LeaveApplication[]> {
     try {
-      const rows = await pgDb.select().from(pgLeaveApplications).orderBy(desc(pgLeaveApplications.createdAt));
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgLeaveApplications.tenantId, tenantId)];
+
+      if (filters?.userId) conditions.push(eq(pgLeaveApplications.userId, filters.userId));
+      if (filters?.status && filters.status !== 'all') conditions.push(eq(pgLeaveApplications.status, filters.status));
+      if (filters?.leaveType && filters.leaveType !== 'all') conditions.push(eq(pgLeaveApplications.leaveType, filters.leaveType));
+
+      const rows = await pgDb
+        .select()
+        .from(pgLeaveApplications)
+        .where(and(...conditions))
+        .orderBy(desc(pgLeaveApplications.createdAt));
+
       return rows.map(r => this.mapLeaveApp(r));
     } catch (e) {
       console.error("[PostgresStorage] listAllLeaveApplications error:", e);
@@ -1861,10 +2237,16 @@ export class PostgresStorage implements IStorage {
 
   async rejectLeave(leaveId: string, rejectedBy: string, reason: string, rejectedByRole: 'manager' | 'hr'): Promise<LeaveApplication> {
     try {
+      const tenantId = await this.getTenantId();
       const [updated] = await pgDb
         .update(pgLeaveApplications)
-        .set({ status: "rejected", approvedBy: rejectedBy, updatedAt: new Date() })
-        .where(eq(pgLeaveApplications.id, leaveId))
+        .set({ status: "rejected", approvedBy: rejectedBy, rejectionReason: reason, updatedAt: new Date() })
+        .where(
+          and(
+            eq(pgLeaveApplications.id, leaveId),
+            eq(pgLeaveApplications.tenantId, tenantId)
+          )
+        )
         .returning();
       try { await this.fallback.rejectLeave(leaveId, rejectedBy, reason, rejectedByRole); } catch (_) {}
       if (updated) return this.mapLeaveApp(updated);
@@ -1876,11 +2258,17 @@ export class PostgresStorage implements IStorage {
 
   async cancelLeaveApplication(leaveId: string, userId: string): Promise<LeaveApplication> {
     try {
+      const tenantId = await this.getTenantId();
       const updated = await pgDb.transaction(async (tx) => {
         const [leave] = await tx
           .select()
           .from(pgLeaveApplications)
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(
+            and(
+              eq(pgLeaveApplications.id, leaveId),
+              eq(pgLeaveApplications.tenantId, tenantId)
+            )
+          )
           .limit(1);
 
         if (!leave) throw new Error("Leave application not found");
@@ -1889,7 +2277,12 @@ export class PostgresStorage implements IStorage {
         const [app] = await tx
           .update(pgLeaveApplications)
           .set({ status: "cancelled", updatedAt: new Date() })
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(
+            and(
+              eq(pgLeaveApplications.id, leaveId),
+              eq(pgLeaveApplications.tenantId, tenantId)
+            )
+          )
           .returning();
 
         // If it was already approved, restore the deducted leave balance
@@ -1908,6 +2301,7 @@ export class PostgresStorage implements IStorage {
               })
               .where(
                 and(
+                  eq(pgLeaveBalances.tenantId, tenantId),
                   eq(pgLeaveBalances.userId, leave.userId),
                   eq(pgLeaveBalances.year, year),
                   eq(pgLeaveBalances.month, month)
@@ -1923,6 +2317,7 @@ export class PostgresStorage implements IStorage {
               })
               .where(
                 and(
+                  eq(pgLeaveBalances.tenantId, tenantId),
                   eq(pgLeaveBalances.userId, leave.userId),
                   eq(pgLeaveBalances.year, year),
                   eq(pgLeaveBalances.month, month)
@@ -2025,10 +2420,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getSalaryStructureByUser(userId: string): Promise<SalaryStructure | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [s] = await pgDb
         .select()
         .from(pgSalaryStructures)
-        .where(eq(pgSalaryStructures.userId, userId))
+        .where(
+          and(
+            eq(pgSalaryStructures.tenantId, tenantId),
+            eq(pgSalaryStructures.userId, userId)
+          )
+        )
+        .orderBy(desc(pgSalaryStructures.effectiveFrom))
         .limit(1);
 
       if (s) {
@@ -2137,6 +2539,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateSalaryAdvance(id: string, data: any): Promise<SalaryAdvance> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.repaidAmount !== undefined) updateValues.repaidAmount = String(data.repaidAmount);
       if (data.remainingAmount !== undefined) updateValues.remainingBalance = String(data.remainingAmount);
@@ -2145,7 +2548,16 @@ async getLeave(id: string): Promise<any | undefined> {
       if (data.approvedBy !== undefined) updateValues.approvedBy = data.approvedBy;
       if (data.approvalDate !== undefined) updateValues.approvalDate = data.approvalDate ? new Date(data.approvalDate) : null;
 
-      const [adv] = await pgDb.update(pgSalaryAdvances).set(updateValues).where(eq(pgSalaryAdvances.id, id)).returning();
+      const [adv] = await pgDb
+        .update(pgSalaryAdvances)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgSalaryAdvances.id, id),
+            eq(pgSalaryAdvances.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateSalaryAdvance(id, data); } catch (_) {}
       if (adv) return this.mapSalaryAdvance(adv);
     } catch (e) {
@@ -2156,7 +2568,17 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getSalaryAdvance(id: string): Promise<SalaryAdvance | undefined> {
     try {
-      const [adv] = await pgDb.select().from(pgSalaryAdvances).where(eq(pgSalaryAdvances.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [adv] = await pgDb
+        .select()
+        .from(pgSalaryAdvances)
+        .where(
+          and(
+            eq(pgSalaryAdvances.id, id),
+            eq(pgSalaryAdvances.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (adv) return this.mapSalaryAdvance(adv);
     } catch (e) {
       console.error("[PostgresStorage] getSalaryAdvance error:", e);
@@ -2166,17 +2588,16 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listSalaryAdvances(filters?: any): Promise<SalaryAdvance[]> {
     try {
-      let query = pgDb.select().from(pgSalaryAdvances);
-      let rows;
-      if (filters?.userId && filters?.status) {
-        rows = await query.where(and(eq(pgSalaryAdvances.userId, filters.userId), eq(pgSalaryAdvances.status, filters.status)));
-      } else if (filters?.userId) {
-        rows = await query.where(eq(pgSalaryAdvances.userId, filters.userId));
-      } else if (filters?.status) {
-        rows = await query.where(eq(pgSalaryAdvances.status, filters.status));
-      } else {
-        rows = await query.orderBy(desc(pgSalaryAdvances.createdAt));
-      }
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgSalaryAdvances.tenantId, tenantId)];
+      if (filters?.userId) conditions.push(eq(pgSalaryAdvances.userId, filters.userId));
+      if (filters?.status) conditions.push(eq(pgSalaryAdvances.status, filters.status));
+
+      const rows = await pgDb
+        .select()
+        .from(pgSalaryAdvances)
+        .where(and(...conditions))
+        .orderBy(desc(pgSalaryAdvances.createdAt));
 
       return rows.map(adv => this.mapSalaryAdvance(adv));
     } catch (e) {
@@ -2186,39 +2607,49 @@ async getLeave(id: string): Promise<any | undefined> {
   }
 
   private mapPayroll(p: any): Payroll {
-    return {
+    return ({
       id: p.id,
       userId: p.userId,
       employeeId: p.employeeId || p.userId,
       month: p.month,
       year: p.year,
-      workingDays: p.workingDays,
-      presentDays: Number(p.presentDays),
-      paidLeaveDays: Number(p.paidLeaveDays),
-      absentDays: Number(p.absentDays),
-      overtimeHours: Number(p.overtimeHours),
-      fixedSalary: Number(p.fixedSalary),
-      earnedBasic: Number(p.earnedBasic),
-      earnedHRA: Number(p.earnedHRA),
-      earnedConveyance: Number(p.earnedConveyance),
-      overtimePay: Number(p.overtimePay),
-      grossSalary: Number(p.grossSalary),
-      epfDeduction: Number(p.epfDeduction),
-      esiDeduction: Number(p.esiDeduction),
-      tdsDeduction: Number(p.tdsDeduction),
-      advanceDeduction: Number(p.advanceDeduction),
-      totalDeductions: Number(p.totalDeductions),
-      netSalary: Number(p.netSalary),
+      workingDays: p.totalWorkingDays ?? p.workingDays ?? 0,
+      presentDays: Number(p.daysWorked ?? p.presentDays ?? 0),
+      paidLeaveDays: Number(p.paidLeaveDays ?? 0),
+      absentDays: Number(p.absentDays ?? 0),
+      overtimeHours: Number(p.overtimeHours ?? 0),
+      fixedSalary: Number(p.fixedSalary ?? 0),
+      earnedBasic: Number(p.earnedBasic ?? 0),
+      earnedHRA: Number(p.earnedHRA ?? 0),
+      earnedConveyance: Number(p.earnedConveyance ?? 0),
+      overtimePay: Number(p.overtimePay ?? 0),
+      grossSalary: Number(p.grossSalary ?? 0),
+      epfDeduction: Number(p.pfDeduction ?? p.epfDeduction ?? 0),
+      esiDeduction: Number(p.esiDeduction ?? 0),
+      tdsDeduction: Number(p.tdsDeduction ?? 0),
+      advanceDeduction: Number(p.advanceDeduction ?? 0),
+      totalDeductions: Number(p.totalDeductions ?? 0),
+      netSalary: Number(p.netSalary ?? 0),
       status: p.status,
       processedBy: p.processedBy || undefined,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt
-    } as Payroll;
+    } as unknown) as Payroll;
   }
 
   async getPayroll(id: string): Promise<Payroll | undefined> {
     try {
-      const [p] = await pgDb.select().from(pgPayrolls).where(eq(pgPayrolls.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [p] = await pgDb
+        .select()
+        .from(pgPayrolls)
+        .where(
+          and(
+            eq(pgPayrolls.id, id),
+            eq(pgPayrolls.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (p) return this.mapPayroll(p);
     } catch (e) {
       console.error("[PostgresStorage] getPayroll error:", e);
@@ -2228,10 +2659,18 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getPayrollByUserAndMonth(userId: string, month: number, year: number): Promise<Payroll | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [p] = await pgDb
         .select()
         .from(pgPayrolls)
-        .where(and(eq(pgPayrolls.userId, userId), eq(pgPayrolls.month, month), eq(pgPayrolls.year, year)))
+        .where(
+          and(
+            eq(pgPayrolls.tenantId, tenantId),
+            eq(pgPayrolls.userId, userId),
+            eq(pgPayrolls.month, month),
+            eq(pgPayrolls.year, year)
+          )
+        )
         .limit(1);
       if (p) return this.mapPayroll(p);
     } catch (e) {
@@ -2246,28 +2685,23 @@ async getLeave(id: string): Promise<any | undefined> {
       const [p] = await pgDb.insert(pgPayrolls).values({
         tenantId,
         userId: data.userId,
-        employeeId: data.employeeId || data.userId,
         month: data.month,
         year: data.year,
-        workingDays: data.workingDays,
-        presentDays: String(data.presentDays || 0),
-        paidLeaveDays: String(data.paidLeaveDays || 0),
-        absentDays: String(data.absentDays || 0),
+        totalWorkingDays: data.totalWorkingDays ?? data.workingDays ?? 26,
+        daysWorked: String(data.daysWorked ?? data.presentDays ?? 0),
         overtimeHours: String(data.overtimeHours || 0),
-        fixedSalary: String(data.fixedSalary || 0),
-        earnedBasic: String(data.earnedBasic || 0),
-        earnedHRA: String(data.earnedHRA || 0),
-        earnedConveyance: String(data.earnedConveyance || 0),
         overtimePay: String(data.overtimePay || 0),
         grossSalary: String(data.grossSalary || 0),
-        epfDeduction: String(data.epfDeduction || 0),
+        netSalary: String(data.netSalary || 0),
+        pfDeduction: String(data.pfDeduction ?? data.epfDeduction ?? 0),
         esiDeduction: String(data.esiDeduction || 0),
-        tdsDeduction: String(data.tdsDeduction || 0),
+        ptDeduction: String(data.ptDeduction || 0),
         advanceDeduction: String(data.advanceDeduction || 0),
         totalDeductions: String(data.totalDeductions || 0),
-        netSalary: String(data.netSalary || 0),
         status: data.status || "draft",
-        processedBy: data.processedBy || null
+        paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
+        paymentReference: data.paymentReference || null,
+        payslipUrl: data.payslipUrl || null
       }).returning();
 
       try { await this.fallback.createPayroll(data); } catch (_) {}
@@ -2280,10 +2714,23 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updatePayroll(id: string, data: any): Promise<Payroll> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.status !== undefined) updateValues.status = data.status;
+      if (data.paymentDate !== undefined) updateValues.paymentDate = data.paymentDate ? new Date(data.paymentDate) : null;
+      if (data.paymentReference !== undefined) updateValues.paymentReference = data.paymentReference;
+      if (data.payslipUrl !== undefined) updateValues.payslipUrl = data.payslipUrl;
 
-      const [p] = await pgDb.update(pgPayrolls).set(updateValues).where(eq(pgPayrolls.id, id)).returning();
+      const [p] = await pgDb
+        .update(pgPayrolls)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgPayrolls.id, id),
+            eq(pgPayrolls.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updatePayroll(id, data); } catch (_) {}
       if (p) return this.mapPayroll(p);
     } catch (e) {
@@ -2294,8 +2741,18 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listPayrolls(filters?: any): Promise<Payroll[]> {
     try {
-      let query = pgDb.select().from(pgPayrolls);
-      const rows = await query.orderBy(desc(pgPayrolls.createdAt));
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgPayrolls.tenantId, tenantId)];
+      if (filters?.userId) conditions.push(eq(pgPayrolls.userId, filters.userId));
+      if (filters?.month !== undefined) conditions.push(eq(pgPayrolls.month, Number(filters.month)));
+      if (filters?.year !== undefined) conditions.push(eq(pgPayrolls.year, Number(filters.year)));
+      if (filters?.status) conditions.push(eq(pgPayrolls.status, filters.status));
+
+      const rows = await pgDb
+        .select()
+        .from(pgPayrolls)
+        .where(and(...conditions))
+        .orderBy(desc(pgPayrolls.createdAt));
       return rows.map(r => this.mapPayroll(r));
     } catch (e) {
       console.error("[PostgresStorage] listPayrolls error:", e);
@@ -2305,7 +2762,17 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listPayrollsByUser(userId: string): Promise<Payroll[]> {
     try {
-      const rows = await pgDb.select().from(pgPayrolls).where(eq(pgPayrolls.userId, userId)).orderBy(desc(pgPayrolls.createdAt));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgPayrolls)
+        .where(
+          and(
+            eq(pgPayrolls.tenantId, tenantId),
+            eq(pgPayrolls.userId, userId)
+          )
+        )
+        .orderBy(desc(pgPayrolls.createdAt));
       return rows.map(r => this.mapPayroll(r));
     } catch (e) {
       console.error("[PostgresStorage] listPayrollsByUser error:", e);
@@ -2440,9 +2907,11 @@ async getLeave(id: string): Promise<any | undefined> {
 
     const { presentDays, overtimeHours } = attendanceSummary;
 
-    const basicSalary = Number(salaryStructure.baseSalary) || 0;
+    const basicSalary = Number((salaryStructure as any).basicSalary ?? (salaryStructure as any).baseSalary ?? 0);
     const hra = Number(salaryStructure.hra) || 0;
-    const allowances = Number(salaryStructure.specialAllowance || 0) + Number(salaryStructure.conveyance || 0) + Number(salaryStructure.medicalAllowance || 0);
+    const allowances = Number((salaryStructure as any).allowances ?? (salaryStructure as any).specialAllowance ?? 0)
+      + Number((salaryStructure as any).conveyance || 0)
+      + Number((salaryStructure as any).medicalAllowance || 0);
 
     const standardDays = payrollSettings.standardWorkingDays || 26;
     const dailySalary = (basicSalary + hra + allowances) / standardDays;
@@ -2462,15 +2931,15 @@ async getLeave(id: string): Promise<any | undefined> {
     const esiRate = (payrollSettings.esiRate || 0.75) / 100;
     const esiDeduction = grossSalary <= payrollSettings.esiApplicableFromSalary ? (grossSalary * esiRate) : 0;
 
-    const ptDeduction = Number(salaryStructure.professionalTax) || 200;
+    const ptDeduction = Number((salaryStructure as any).professionalTax) || 200;
 
     const advances = await this.listSalaryAdvances({ userId, status: 'approved' });
     let totalAdvanceDeduction = 0;
     for (const adv of advances) {
-      if (adv.status === 'approved' && Number(adv.remainingBalance || 0) > 0) {
-        const emi = Number(adv.monthlyEmiAmount || 0);
-        const rem = Number(adv.remainingBalance || 0);
-        totalAdvanceDeduction += Math.min(emi, rem);
+      const advRemaining = Number((adv as any).remainingBalance ?? (adv as any).balance ?? 0);
+      if (adv.status === 'approved' && advRemaining > 0) {
+        const emi = Number((adv as any).monthlyEmiAmount ?? (adv as any).emiAmount ?? 0);
+        totalAdvanceDeduction += Math.min(emi, advRemaining);
       }
     }
 
@@ -2501,15 +2970,30 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async listOfficeLocations(): Promise<OfficeLocation[]> {
     try {
-      const rows = await pgDb.select().from(pgOfficeLocations).where(eq(pgOfficeLocations.isActive, true));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgOfficeLocations)
+        .where(
+          and(
+            eq(pgOfficeLocations.tenantId, tenantId),
+            eq(pgOfficeLocations.isActive, true)
+          )
+        );
+
       return rows.map(loc => ({
         id: loc.id,
         name: loc.name,
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        radius: loc.radius,
+        latitude: String(loc.latitude),
+        longitude: String(loc.longitude),
+        radius: Number(loc.radius) || 500,
+        address: loc.address || undefined,
+        city: loc.city || undefined,
+        state: loc.state || undefined,
+        pincode: loc.pincode || undefined,
+        isActive: loc.isActive,
         createdAt: loc.createdAt
-      } as OfficeLocation));
+      } as any));
     } catch (e) {
       console.error("[PostgresStorage] listOfficeLocations error:", e);
       return this.fallback.listOfficeLocations();
@@ -2518,16 +3002,32 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getOfficeLocation(id: string): Promise<OfficeLocation | undefined> {
     try {
-      const [loc] = await pgDb.select().from(pgOfficeLocations).where(eq(pgOfficeLocations.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [loc] = await pgDb
+        .select()
+        .from(pgOfficeLocations)
+        .where(
+          and(
+            eq(pgOfficeLocations.id, id),
+            eq(pgOfficeLocations.tenantId, tenantId)
+          )
+        )
+        .limit(1);
+
       if (loc) {
         return {
           id: loc.id,
           name: loc.name,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          radius: loc.radius,
+          latitude: String(loc.latitude),
+          longitude: String(loc.longitude),
+          radius: Number(loc.radius) || 500,
+          address: loc.address || undefined,
+          city: loc.city || undefined,
+          state: loc.state || undefined,
+          pincode: loc.pincode || undefined,
+          isActive: loc.isActive,
           createdAt: loc.createdAt
-        } as OfficeLocation;
+        } as any;
       }
     } catch (e) {
       console.error("[PostgresStorage] getOfficeLocation error:", e);
@@ -2537,10 +3037,17 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getCompanySettings(): Promise<any | undefined> {
     try {
-      const [s] = await pgDb.select().from(pgCompanySettings).limit(1);
+      const tenantId = await this.getTenantId();
+      const [s] = await pgDb
+        .select()
+        .from(pgCompanySettings)
+        .where(eq(pgCompanySettings.tenantId, tenantId))
+        .limit(1);
+
       if (s) {
         return {
           id: s.id,
+          tenantId: s.tenantId,
           companyName: s.companyName,
           logoUrl: s.logoUrl,
           supportEmail: s.supportEmail,
@@ -2563,16 +3070,36 @@ async getLeave(id: string): Promise<any | undefined> {
   async updateCompanySettings(settings: any): Promise<void> {
     try {
       const tenantId = await this.getTenantId();
-      const existing = await pgDb.select().from(pgCompanySettings).limit(1);
-      if (existing.length > 0) {
-        await pgDb.update(pgCompanySettings).set({
-          ...settings,
-          updatedAt: new Date()
-        }).where(eq(pgCompanySettings.id, existing[0].id));
+      const [existing] = await pgDb
+        .select()
+        .from(pgCompanySettings)
+        .where(eq(pgCompanySettings.tenantId, tenantId))
+        .limit(1);
+
+      const updateValues: any = {
+        updatedAt: new Date()
+      };
+      if (settings.companyName !== undefined) updateValues.companyName = settings.companyName;
+      if (settings.logoUrl !== undefined) updateValues.logoUrl = settings.logoUrl;
+      if (settings.supportEmail !== undefined) updateValues.supportEmail = settings.supportEmail;
+      if (settings.supportPhone !== undefined) updateValues.supportPhone = settings.supportPhone;
+      if (settings.address !== undefined) updateValues.address = settings.address;
+      if (settings.gstin !== undefined) updateValues.gstin = settings.gstin;
+      if (settings.defaultOTRate !== undefined) updateValues.defaultOTRate = String(settings.defaultOTRate);
+      if (settings.weekendOTRate !== undefined) updateValues.weekendOTRate = String(settings.weekendOTRate);
+      if (settings.maxOTHoursPerDay !== undefined) updateValues.maxOTHoursPerDay = Number(settings.maxOTHoursPerDay);
+      if (settings.weekendDays !== undefined) updateValues.weekendDays = settings.weekendDays;
+
+      if (existing) {
+        await pgDb
+          .update(pgCompanySettings)
+          .set(updateValues)
+          .where(and(eq(pgCompanySettings.id, existing.id), eq(pgCompanySettings.tenantId, tenantId)));
       } else {
         await pgDb.insert(pgCompanySettings).values({
           tenantId,
-          ...settings
+          companyName: settings.companyName || "Default Company",
+          ...updateValues
         });
       }
       try { await this.fallback.updateCompanySettings(settings); } catch (_) {}
@@ -2653,19 +3180,26 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive ?? true
       }).returning();
 
-      try { await this.fallback.createOfficeLocation(data); } catch (_) {}
+      if (typeof (this.fallback as any).createOfficeLocation === 'function') {
+        try { await (this.fallback as any).createOfficeLocation(data); } catch (_) {}
+      }
 
       return {
         id: loc.id,
         name: loc.name,
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        radius: loc.radius,
+        latitude: String(loc.latitude),
+        longitude: String(loc.longitude),
+        radius: Number(loc.radius),
+        address: loc.address || undefined,
+        city: loc.city || undefined,
+        state: loc.state || undefined,
+        pincode: loc.pincode || undefined,
+        isActive: loc.isActive,
         createdAt: loc.createdAt
-      } as OfficeLocation;
+      } as any;
     } catch (e) {
-      console.error("[PostgresStorage] createOfficeLocation error, delegating:", e);
-      return this.fallback.createOfficeLocation(data);
+      console.error("[PostgresStorage] createOfficeLocation error:", e);
+      throw e;
     }
   }
 
@@ -2728,11 +3262,11 @@ async getLeave(id: string): Promise<any | undefined> {
           }
         })
         .returning();
-      try { await this.fallback.createDepartmentTiming(data); } catch (_) {}
+      try { await (this.fallback as any).createDepartmentTiming?.(data); } catch (_) {}
       return upserted;
     } catch (e) {
       console.error("[PostgresStorage] createDepartmentTiming error:", e);
-      return this.fallback.createDepartmentTiming(data);
+      return (this.fallback as any).createDepartmentTiming ? (this.fallback as any).createDepartmentTiming(data) : undefined;
     }
   }
 
@@ -2763,16 +3297,19 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getAuditLogs(filters?: { userId?: string; entityType?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
     try {
-      const conditions: any[] = [];
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [eq(pgAuditLogs.tenantId, tenantId)];
       if (filters?.userId) conditions.push(eq(pgAuditLogs.userId, filters.userId));
       if (filters?.entityType) conditions.push(eq(pgAuditLogs.entityType, filters.entityType));
       if (filters?.startDate) conditions.push(gte(pgAuditLogs.createdAt, filters.startDate));
       if (filters?.endDate) conditions.push(lte(pgAuditLogs.createdAt, filters.endDate));
 
-      const query = pgDb.select().from(pgAuditLogs);
-      const rows = conditions.length > 0
-        ? await query.where(and(...conditions)).orderBy(desc(pgAuditLogs.createdAt)).limit(1000)
-        : await query.orderBy(desc(pgAuditLogs.createdAt)).limit(1000);
+      const rows = await pgDb
+        .select()
+        .from(pgAuditLogs)
+        .where(and(...conditions))
+        .orderBy(desc(pgAuditLogs.createdAt))
+        .limit(1000);
 
       return rows;
     } catch (e) {
@@ -2820,10 +3357,16 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateNotification(id: string, updates: any): Promise<any> {
     try {
+      const tenantId = await this.getTenantId();
       const [n] = await pgDb
         .update(pgNotifications)
         .set({ ...updates, updatedAt: new Date() })
-        .where(eq(pgNotifications.id, id))
+        .where(
+          and(
+            eq(pgNotifications.id, id),
+            eq(pgNotifications.tenantId, tenantId)
+          )
+        )
         .returning();
       try { await this.fallback.updateNotification(id, updates); } catch (_) {}
       return n;
@@ -2835,7 +3378,15 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deleteExpiredNotifications(expiryDate: Date): Promise<void> {
     try {
-      await pgDb.delete(pgNotifications).where(lte(pgNotifications.createdAt, expiryDate));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgNotifications)
+        .where(
+          and(
+            eq(pgNotifications.tenantId, tenantId),
+            lte(pgNotifications.createdAt, expiryDate)
+          )
+        );
       try { await this.fallback.deleteExpiredNotifications(expiryDate); } catch (_) {}
     } catch (e) {
       console.error("[PostgresStorage] deleteExpiredNotifications error:", e);
@@ -2848,7 +3399,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getSalaryStructure(id: string): Promise<SalaryStructure | undefined> {
     try {
-      const [s] = await pgDb.select().from(pgSalaryStructures).where(eq(pgSalaryStructures.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [s] = await pgDb
+        .select()
+        .from(pgSalaryStructures)
+        .where(
+          and(
+            eq(pgSalaryStructures.id, id),
+            eq(pgSalaryStructures.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (s) {
         return {
           id: s.id,
@@ -2946,6 +3507,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateSalaryStructure(id: string, data: any): Promise<SalaryStructure> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.baseSalary !== undefined) updateValues.baseSalary = String(data.baseSalary);
       if (data.hra !== undefined) updateValues.hra = String(data.hra);
@@ -2953,7 +3515,16 @@ async getLeave(id: string): Promise<any | undefined> {
       if (data.monthlyNet !== undefined) updateValues.monthlyNet = String(data.monthlyNet);
       if (data.isActive !== undefined) updateValues.isActive = data.isActive;
 
-      const [s] = await pgDb.update(pgSalaryStructures).set(updateValues).where(eq(pgSalaryStructures.id, id)).returning();
+      const [s] = await pgDb
+        .update(pgSalaryStructures)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgSalaryStructures.id, id),
+            eq(pgSalaryStructures.tenantId, tenantId)
+          )
+        )
+        .returning();
       try { await this.fallback.updateSalaryStructure(id, data); } catch (_) {}
       if (s) {
         return {
@@ -2976,7 +3547,7 @@ async getLeave(id: string): Promise<any | undefined> {
           isActive: s.isActive,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt
-        } as SalaryStructure;
+        } as unknown as SalaryStructure;
       }
     } catch (e) {
       console.error("[PostgresStorage] updateSalaryStructure error:", e);
@@ -2986,7 +3557,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listSalaryStructures(): Promise<SalaryStructure[]> {
     try {
-      const rows = await pgDb.select().from(pgSalaryStructures).orderBy(desc(pgSalaryStructures.createdAt));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgSalaryStructures)
+        .where(eq(pgSalaryStructures.tenantId, tenantId))
+        .orderBy(desc(pgSalaryStructures.createdAt));
       return rows.map(s => ({
         id: s.id,
         userId: s.userId,
@@ -3007,7 +3583,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: s.isActive,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt
-      } as SalaryStructure));
+      } as unknown as SalaryStructure));
     } catch (e) {
       console.error("[PostgresStorage] listSalaryStructures error:", e);
       return this.fallback.listSalaryStructures();
@@ -3041,24 +3617,36 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   // FIXED HOLIDAYS
   // ===================================================================
+  private mapFixedHoliday(h: any): FixedHoliday {
+    return {
+      id: h.id,
+      tenantId: h.tenantId,
+      name: h.name,
+      date: h.date,
+      year: h.year,
+      type: h.type as any,
+      isPaid: h.isPaid ?? true,
+      isOptional: h.isOptional ?? false,
+      allowOT: (h as any).allowOT ?? false,
+      applicableDepartments: (h.applicableDepartments as string[]) || [],
+      description: h.description || undefined,
+      notes: h.description || undefined,
+      createdBy: h.createdBy || undefined,
+      isActive: h.isActive ?? true,
+      createdAt: h.createdAt,
+      updatedAt: h.updatedAt
+    } as any;
+  }
+
   async getFixedHoliday(id: string): Promise<FixedHoliday | undefined> {
     try {
-      const [h] = await pgDb.select().from(pgFixedHolidays).where(eq(pgFixedHolidays.id, id)).limit(1);
-      if (h) {
-        return {
-          id: h.id,
-          name: h.name,
-          date: h.date,
-          year: h.year,
-          type: h.type as any,
-          isPaid: h.isPaid ?? true,
-          isOptional: h.isOptional ?? false,
-          applicableDepartments: (h.applicableDepartments as string[]) || [],
-          description: h.description || undefined,
-          createdBy: h.createdBy || undefined,
-          createdAt: h.createdAt
-        } as FixedHoliday;
-      }
+      const tenantId = await this.getTenantId();
+      const [h] = await pgDb
+        .select()
+        .from(pgFixedHolidays)
+        .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
+        .limit(1);
+      if (h) return this.mapFixedHoliday(h);
     } catch (e) {
       console.error("[PostgresStorage] getFixedHoliday error:", e);
     }
@@ -3068,33 +3656,24 @@ async getLeave(id: string): Promise<any | undefined> {
   async createFixedHoliday(data: any): Promise<FixedHoliday> {
     try {
       const tenantId = await this.getTenantId();
+      const dateObj = data.date instanceof Date ? data.date : new Date(data.date);
+      const year = Number(data.year) || dateObj.getFullYear();
       const [h] = await pgDb.insert(pgFixedHolidays).values({
         tenantId,
         name: data.name,
-        date: data.date instanceof Date ? data.date : new Date(data.date),
-        year: Number(data.year),
+        date: dateObj,
+        year,
         type: data.type || "mandatory",
         isPaid: data.isPaid ?? true,
         isOptional: data.isOptional ?? false,
         applicableDepartments: data.applicableDepartments || [],
-        description: data.description || null,
-        createdBy: data.createdBy || null
+        description: data.description || data.notes || null,
+        createdBy: data.createdBy || null,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true
       }).returning();
 
       try { await this.fallback.createFixedHoliday(data); } catch (_) {}
-      return {
-        id: h.id,
-        name: h.name,
-        date: h.date,
-        year: h.year,
-        type: h.type as any,
-        isPaid: h.isPaid ?? true,
-        isOptional: h.isOptional ?? false,
-        applicableDepartments: (h.applicableDepartments as string[]) || [],
-        description: h.description || undefined,
-        createdBy: h.createdBy || undefined,
-        createdAt: h.createdAt
-      } as FixedHoliday;
+      return this.mapFixedHoliday(h);
     } catch (e) {
       console.error("[PostgresStorage] createFixedHoliday error:", e);
       return this.fallback.createFixedHoliday(data);
@@ -3103,30 +3682,31 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateFixedHoliday(id: string, data: any): Promise<FixedHoliday> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
-      if (data.date !== undefined) updateValues.date = data.date instanceof Date ? data.date : new Date(data.date);
-      if (data.type !== undefined) updateValues.type = data.type;
-      if (data.isPaid !== undefined) updateValues.isPaid = data.isPaid;
-      if (data.description !== undefined) updateValues.description = data.description;
-
-      const [h] = await pgDb.update(pgFixedHolidays).set(updateValues).where(eq(pgFixedHolidays.id, id)).returning();
-      try { await this.fallback.updateFixedHoliday(id, data); } catch (_) {}
-      if (h) {
-        return {
-          id: h.id,
-          name: h.name,
-          date: h.date,
-          year: h.year,
-          type: h.type as any,
-          isPaid: h.isPaid ?? true,
-          isOptional: h.isOptional ?? false,
-          applicableDepartments: (h.applicableDepartments as string[]) || [],
-          description: h.description || undefined,
-          createdBy: h.createdBy || undefined,
-          createdAt: h.createdAt
-        } as FixedHoliday;
+      if (data.date !== undefined) {
+        const d = data.date instanceof Date ? data.date : new Date(data.date);
+        updateValues.date = d;
+        updateValues.year = d.getFullYear();
       }
+      if (data.year !== undefined) updateValues.year = Number(data.year);
+      if (data.type !== undefined) updateValues.type = data.type;
+      if (data.isPaid !== undefined) updateValues.isPaid = Boolean(data.isPaid);
+      if (data.isOptional !== undefined) updateValues.isOptional = Boolean(data.isOptional);
+      if (data.applicableDepartments !== undefined) updateValues.applicableDepartments = data.applicableDepartments;
+      if (data.description !== undefined) updateValues.description = data.description;
+      if (data.notes !== undefined) updateValues.description = data.notes;
+      if (data.isActive !== undefined) updateValues.isActive = Boolean(data.isActive);
+
+      const [h] = await pgDb
+        .update(pgFixedHolidays)
+        .set(updateValues)
+        .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
+        .returning();
+
+      try { await this.fallback.updateFixedHoliday(id, data); } catch (_) {}
+      if (h) return this.mapFixedHoliday(h);
     } catch (e) {
       console.error("[PostgresStorage] updateFixedHoliday error:", e);
     }
@@ -3135,9 +3715,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deleteFixedHoliday(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgFixedHolidays).where(eq(pgFixedHolidays.id, id));
+      const tenantId = await this.getTenantId();
+      const [h] = await pgDb
+        .update(pgFixedHolidays)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
+        .returning();
       try { await this.fallback.deleteFixedHoliday(id); } catch (_) {}
-      return true;
+      return Boolean(h);
     } catch (e) {
       console.error("[PostgresStorage] deleteFixedHoliday error:", e);
       return this.fallback.deleteFixedHoliday(id);
@@ -3146,24 +3731,22 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listFixedHolidays(year?: number): Promise<FixedHoliday[]> {
     try {
-      let query = pgDb.select().from(pgFixedHolidays);
-      const rows = year
-        ? await query.where(eq(pgFixedHolidays.year, year)).orderBy(pgFixedHolidays.date)
-        : await query.orderBy(pgFixedHolidays.date);
+      const tenantId = await this.getTenantId();
+      const conditions: any[] = [
+        eq(pgFixedHolidays.tenantId, tenantId),
+        eq(pgFixedHolidays.isActive, true)
+      ];
+      if (year) {
+        conditions.push(eq(pgFixedHolidays.year, year));
+      }
 
-      return rows.map(h => ({
-        id: h.id,
-        name: h.name,
-        date: h.date,
-        year: h.year,
-        type: h.type as any,
-        isPaid: h.isPaid ?? true,
-        isOptional: h.isOptional ?? false,
-        applicableDepartments: (h.applicableDepartments as string[]) || [],
-        description: h.description || undefined,
-        createdBy: h.createdBy || undefined,
-        createdAt: h.createdAt
-      } as FixedHoliday));
+      const rows = await pgDb
+        .select()
+        .from(pgFixedHolidays)
+        .where(and(...conditions))
+        .orderBy(pgFixedHolidays.date);
+
+      return rows.map(h => this.mapFixedHoliday(h));
     } catch (e) {
       console.error("[PostgresStorage] listFixedHolidays error:", e);
       return this.fallback.listFixedHolidays(year);
@@ -3200,6 +3783,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getHolidaysByDate(date: Date): Promise<any[]> {
     try {
+      const tenantId = await this.getTenantId();
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
@@ -3208,8 +3792,15 @@ async getLeave(id: string): Promise<any | undefined> {
       const rows = await pgDb
         .select()
         .from(pgFixedHolidays)
-        .where(and(gte(pgFixedHolidays.date, start), lte(pgFixedHolidays.date, end)));
-      return rows;
+        .where(
+          and(
+            eq(pgFixedHolidays.tenantId, tenantId),
+            eq(pgFixedHolidays.isActive, true),
+            gte(pgFixedHolidays.date, start),
+            lte(pgFixedHolidays.date, end)
+          )
+        );
+      return rows.map(h => this.mapFixedHoliday(h));
     } catch (e) {
       console.error("[PostgresStorage] getHolidaysByDate error:", e);
       return this.fallback.getHolidaysByDate(date);
@@ -3218,12 +3809,20 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getHolidaysByDateRange(startDate: Date, endDate: Date): Promise<any[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb
         .select()
         .from(pgFixedHolidays)
-        .where(and(gte(pgFixedHolidays.date, startDate), lte(pgFixedHolidays.date, endDate)))
+        .where(
+          and(
+            eq(pgFixedHolidays.tenantId, tenantId),
+            eq(pgFixedHolidays.isActive, true),
+            gte(pgFixedHolidays.date, startDate),
+            lte(pgFixedHolidays.date, endDate)
+          )
+        )
         .orderBy(pgFixedHolidays.date);
-      return rows;
+      return rows.map(h => this.mapFixedHoliday(h));
     } catch (e) {
       console.error("[PostgresStorage] getHolidaysByDateRange error:", e);
       return this.fallback.getHolidaysByDateRange(startDate, endDate);
@@ -3279,7 +3878,7 @@ async getLeave(id: string): Promise<any | undefined> {
   async createPayrollPeriod(period: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
-      const periodId = period.id || `period-${period.year}-${period.month}`;
+      const periodId = period.id || `period-${tenantId}-${period.year}-${period.month}`;
       const [p] = await pgDb.insert(pgPayrollPeriods).values({
         id: periodId,
         tenantId,
@@ -3313,12 +3912,21 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updatePayrollPeriod(id: string, updates: any): Promise<void> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (updates.isLocked !== undefined) updateValues.isLocked = updates.isLocked;
       if (updates.lockedAt !== undefined) updateValues.lockedAt = updates.lockedAt ? new Date(updates.lockedAt) : null;
       if (updates.lockedBy !== undefined) updateValues.lockedBy = updates.lockedBy;
 
-      await pgDb.update(pgPayrollPeriods).set(updateValues).where(eq(pgPayrollPeriods.id, id));
+      await pgDb
+        .update(pgPayrollPeriods)
+        .set(updateValues)
+        .where(
+          and(
+            eq(pgPayrollPeriods.id, id),
+            eq(pgPayrollPeriods.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.updatePayrollPeriod(id, updates); } catch (_) {}
     } catch (e) {
       console.error("[PostgresStorage] updatePayrollPeriod error:", e);
@@ -3328,7 +3936,16 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getPayrollPeriodsByYear(year: number): Promise<any[]> {
     try {
-      const rows = await pgDb.select().from(pgPayrollPeriods).where(eq(pgPayrollPeriods.year, year));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgPayrollPeriods)
+        .where(
+          and(
+            eq(pgPayrollPeriods.year, year),
+            eq(pgPayrollPeriods.tenantId, tenantId)
+          )
+        );
       return rows;
     } catch (e) {
       console.error("[PostgresStorage] getPayrollPeriodsByYear error:", e);
@@ -3380,7 +3997,7 @@ async getLeave(id: string): Promise<any | undefined> {
           },
           contactInfo: {
             primaryEmail: u.email,
-            primaryPhone: u.phone || ''
+            primaryPhone: (u as any).phone || ''
           },
           employmentInfo: {
             department: u.department || 'operations',
@@ -3404,7 +4021,7 @@ async getLeave(id: string): Promise<any | undefined> {
           },
           emergencyContacts: [],
           createdAt: u.createdAt,
-          updatedAt: u.updatedAt
+          updatedAt: (u as any).updatedAt || u.createdAt
         })) as Employee[];
       }
 
@@ -3429,8 +4046,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getEmployee(id: string): Promise<Employee | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [emp] = await pgDb.select().from(pgEmployees)
-        .where(or(eq(pgEmployees.id, id), eq(pgEmployees.employeeId, id), eq(pgEmployees.systemUserId, id)))
+        .where(
+          and(
+            eq(pgEmployees.tenantId, tenantId),
+            or(eq(pgEmployees.id, id), eq(pgEmployees.employeeId, id), eq(pgEmployees.systemUserId, id))
+          )
+        )
         .limit(1);
       if (emp) {
         return {
@@ -3470,7 +4093,7 @@ async getLeave(id: string): Promise<any | undefined> {
           },
           contactInfo: {
             primaryEmail: u.email,
-            primaryPhone: u.phone || ''
+            primaryPhone: (u as any).phone || ''
           },
           employmentInfo: {
             department: u.department || 'operations',
@@ -3494,7 +4117,7 @@ async getLeave(id: string): Promise<any | undefined> {
           },
           emergencyContacts: [],
           createdAt: u.createdAt,
-          updatedAt: u.updatedAt
+          updatedAt: (u as any).updatedAt || u.createdAt
         } as Employee;
       }
     } catch (e) {
@@ -3575,6 +4198,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateEmployee(id: string, data: any): Promise<Employee> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.employeeId !== undefined) updateValues.employeeId = data.employeeId;
       if (data.systemUserId !== undefined) updateValues.systemUserId = data.systemUserId;
@@ -3591,7 +4215,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgEmployees)
         .set(updateValues)
-        .where(eq(pgEmployees.id, id))
+        .where(
+          and(
+            eq(pgEmployees.id, id),
+            eq(pgEmployees.tenantId, tenantId)
+          )
+        )
         .returning();
 
       try { await this.fallback.updateEmployee(id, data); } catch (_) {}
@@ -3623,9 +4252,15 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deleteEmployee(id: string): Promise<boolean> {
     try {
+      const tenantId = await this.getTenantId();
       await pgDb.update(pgEmployees)
         .set({ isActive: false, status: 'terminated', updatedAt: new Date() })
-        .where(eq(pgEmployees.id, id));
+        .where(
+          and(
+            eq(pgEmployees.id, id),
+            eq(pgEmployees.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.deleteEmployee(id); } catch (_) {}
       return true;
     } catch (e) {
@@ -3639,7 +4274,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined> {
     try {
-      const [doc] = await pgDb.select().from(pgEmployeeDocuments).where(eq(pgEmployeeDocuments.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [doc] = await pgDb
+        .select()
+        .from(pgEmployeeDocuments)
+        .where(
+          and(
+            eq(pgEmployeeDocuments.id, id),
+            eq(pgEmployeeDocuments.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (doc) {
         return {
           id: doc.id,
@@ -3666,8 +4311,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getEmployeeDocuments(employeeId: string): Promise<EmployeeDocument[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb.select().from(pgEmployeeDocuments)
-        .where(eq(pgEmployeeDocuments.employeeId, employeeId))
+        .where(
+          and(
+            eq(pgEmployeeDocuments.tenantId, tenantId),
+            eq(pgEmployeeDocuments.employeeId, employeeId)
+          )
+        )
         .orderBy(desc(pgEmployeeDocuments.createdAt));
       return rows.map(doc => ({
         id: doc.id,
@@ -3693,8 +4344,15 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getEmployeeDocumentsByType(employeeId: string, documentType: string): Promise<EmployeeDocument[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb.select().from(pgEmployeeDocuments)
-        .where(and(eq(pgEmployeeDocuments.employeeId, employeeId), eq(pgEmployeeDocuments.documentType, documentType)))
+        .where(
+          and(
+            eq(pgEmployeeDocuments.tenantId, tenantId),
+            eq(pgEmployeeDocuments.employeeId, employeeId),
+            eq(pgEmployeeDocuments.documentType, documentType)
+          )
+        )
         .orderBy(desc(pgEmployeeDocuments.createdAt));
       return rows.map(doc => ({
         id: doc.id,
@@ -3761,6 +4419,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateEmployeeDocument(id: string, data: any): Promise<EmployeeDocument> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.documentType !== undefined) updateValues.documentType = data.documentType;
       if (data.documentName !== undefined) updateValues.documentName = data.documentName;
@@ -3774,7 +4433,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgEmployeeDocuments)
         .set(updateValues)
-        .where(eq(pgEmployeeDocuments.id, id))
+        .where(
+          and(
+            eq(pgEmployeeDocuments.id, id),
+            eq(pgEmployeeDocuments.tenantId, tenantId)
+          )
+        )
         .returning();
 
       try { await this.fallback.updateEmployeeDocument(id, data); } catch (_) {}
@@ -3804,7 +4468,15 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deleteEmployeeDocument(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgEmployeeDocuments).where(eq(pgEmployeeDocuments.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgEmployeeDocuments)
+        .where(
+          and(
+            eq(pgEmployeeDocuments.id, id),
+            eq(pgEmployeeDocuments.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.deleteEmployeeDocument(id); } catch (_) {}
       return true;
     } catch (e) {
@@ -3818,7 +4490,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getPerformanceReview(id: string): Promise<PerformanceReview | undefined> {
     try {
-      const [pr] = await pgDb.select().from(pgPerformanceReviews).where(eq(pgPerformanceReviews.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [pr] = await pgDb
+        .select()
+        .from(pgPerformanceReviews)
+        .where(
+          and(
+            eq(pgPerformanceReviews.id, id),
+            eq(pgPerformanceReviews.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (pr) {
         const rp: any = pr.reviewPeriod || {};
         return {
@@ -3849,8 +4531,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getEmployeePerformanceReviews(employeeId: string): Promise<PerformanceReview[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb.select().from(pgPerformanceReviews)
-        .where(eq(pgPerformanceReviews.employeeId, employeeId))
+        .where(
+          and(
+            eq(pgPerformanceReviews.tenantId, tenantId),
+            eq(pgPerformanceReviews.employeeId, employeeId)
+          )
+        )
         .orderBy(desc(pgPerformanceReviews.createdAt));
       return rows.map(pr => {
         const rp: any = pr.reviewPeriod || {};
@@ -3882,8 +4570,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getPerformanceReviewsByReviewer(reviewerId: string): Promise<PerformanceReview[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb.select().from(pgPerformanceReviews)
-        .where(eq(pgPerformanceReviews.reviewedBy, reviewerId))
+        .where(
+          and(
+            eq(pgPerformanceReviews.tenantId, tenantId),
+            eq(pgPerformanceReviews.reviewedBy, reviewerId)
+          )
+        )
         .orderBy(desc(pgPerformanceReviews.createdAt));
       return rows.map(pr => {
         const rp: any = pr.reviewPeriod || {};
@@ -3915,10 +4609,17 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getUpcomingPerformanceReviews(): Promise<PerformanceReview[]> {
     try {
+      const tenantId = await this.getTenantId();
       const now = new Date();
       const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       const rows = await pgDb.select().from(pgPerformanceReviews)
-        .where(and(gte(pgPerformanceReviews.nextReviewDate, now), lte(pgPerformanceReviews.nextReviewDate, nextMonth)))
+        .where(
+          and(
+            eq(pgPerformanceReviews.tenantId, tenantId),
+            gte(pgPerformanceReviews.nextReviewDate, now),
+            lte(pgPerformanceReviews.nextReviewDate, nextMonth)
+          )
+        )
         .orderBy(pgPerformanceReviews.nextReviewDate);
       return rows.map(pr => {
         const rp: any = pr.reviewPeriod || {};
@@ -3995,6 +4696,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updatePerformanceReview(id: string, data: any): Promise<PerformanceReview> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.reviewPeriod !== undefined) updateValues.reviewPeriod = data.reviewPeriod;
       if (data.reviewType !== undefined) updateValues.reviewType = data.reviewType;
@@ -4009,7 +4711,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgPerformanceReviews)
         .set(updateValues)
-        .where(eq(pgPerformanceReviews.id, id))
+        .where(
+          and(
+            eq(pgPerformanceReviews.id, id),
+            eq(pgPerformanceReviews.tenantId, tenantId)
+          )
+        )
         .returning();
 
       try { await this.fallback.updatePerformanceReview(id, data); } catch (_) {}
@@ -4043,7 +4750,15 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deletePerformanceReview(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgPerformanceReviews).where(eq(pgPerformanceReviews.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb
+        .delete(pgPerformanceReviews)
+        .where(
+          and(
+            eq(pgPerformanceReviews.id, id),
+            eq(pgPerformanceReviews.tenantId, tenantId)
+          )
+        );
       try { await this.fallback.deletePerformanceReview(id); } catch (_) {}
       return true;
     } catch (e) {
@@ -4057,7 +4772,17 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getDesignation(id: string): Promise<Designation | undefined> {
     try {
-      const [des] = await pgDb.select().from(pgDesignations).where(eq(pgDesignations.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [des] = await pgDb
+        .select()
+        .from(pgDesignations)
+        .where(
+          and(
+            eq(pgDesignations.id, id),
+            eq(pgDesignations.tenantId, tenantId)
+          )
+        )
+        .limit(1);
       if (des) {
         return {
           id: des.id,
@@ -4071,7 +4796,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDesignation error:", e);
     }
-    return this.fallback.getDesignation(id);
+    return (this.fallback as any)?.getDesignation ? (this.fallback as any).getDesignation(id) : undefined;
   }
 
   async getDesignationByName(name: string): Promise<Designation | undefined> {
@@ -4093,7 +4818,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDesignationByName error:", e);
     }
-    return this.fallback.getDesignationByName(name);
+    return (this.fallback as any)?.getDesignationByName ? (this.fallback as any).getDesignationByName(name) : undefined;
   }
 
   async listDesignations(): Promise<Designation[]> {
@@ -4156,6 +4881,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateDesignation(id: string, data: any): Promise<Designation> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.level !== undefined) updateValues.level = data.level;
@@ -4164,7 +4890,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgDesignations)
         .set(updateValues)
-        .where(eq(pgDesignations.id, id))
+        .where(and(eq(pgDesignations.tenantId, tenantId), eq(pgDesignations.id, id)))
         .returning();
 
       try { await this.fallback.updateDesignation(id, data); } catch (_) {}
@@ -4181,17 +4907,18 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] updateDesignation error:", e);
     }
-    return this.fallback.updateDesignation(id, data);
+    return (this.fallback as any)?.updateDesignation ? (this.fallback as any).updateDesignation(id, data) : undefined;
   }
 
   async deleteDesignation(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgDesignations).where(eq(pgDesignations.id, id));
-      try { await this.fallback.deleteDesignation(id); } catch (_) {}
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgDesignations).where(and(eq(pgDesignations.tenantId, tenantId), eq(pgDesignations.id, id)));
+      try { await (this.fallback as any)?.deleteDesignation?.(id); } catch (_) {}
       return true;
     } catch (e) {
       console.error("[PostgresStorage] deleteDesignation error:", e);
-      return this.fallback.deleteDesignation(id);
+      return (this.fallback as any)?.deleteDesignation ? (this.fallback as any).deleteDesignation(id) : false;
     }
   }
 
@@ -4200,7 +4927,10 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getPermissionGroup(id: string): Promise<PermissionGroup | undefined> {
     try {
-      const [pg] = await pgDb.select().from(pgPermissionGroups).where(eq(pgPermissionGroups.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [pg] = await pgDb.select().from(pgPermissionGroups)
+        .where(and(eq(pgPermissionGroups.tenantId, tenantId), eq(pgPermissionGroups.id, id)))
+        .limit(1);
       if (pg) {
         return {
           id: pg.id,
@@ -4216,7 +4946,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getPermissionGroup error:", e);
     }
-    return this.fallback.getPermissionGroup(id);
+    return (this.fallback as any)?.getPermissionGroup ? (this.fallback as any).getPermissionGroup(id) : undefined;
   }
 
   async getPermissionsByDepartmentAndDesignation(department: string, designation: string): Promise<PermissionGroup | undefined> {
@@ -4244,7 +4974,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getPermissionsByDepartmentAndDesignation error:", e);
     }
-    return this.fallback.getPermissionsByDepartmentAndDesignation(department, designation);
+    return (this.fallback as any)?.getPermissionsByDepartmentAndDesignation ? (this.fallback as any).getPermissionsByDepartmentAndDesignation(department, designation) : undefined;
   }
 
   async listPermissionGroups(): Promise<PermissionGroup[]> {
@@ -4301,6 +5031,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updatePermissionGroup(id: string, data: any): Promise<PermissionGroup> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.department !== undefined) updateValues.department = data.department;
@@ -4311,7 +5042,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgPermissionGroups)
         .set(updateValues)
-        .where(eq(pgPermissionGroups.id, id))
+        .where(and(eq(pgPermissionGroups.tenantId, tenantId), eq(pgPermissionGroups.id, id)))
         .returning();
 
       try { await this.fallback.updatePermissionGroup(id, data); } catch (_) {}
@@ -4330,17 +5061,18 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] updatePermissionGroup error:", e);
     }
-    return this.fallback.updatePermissionGroup(id, data);
+    return (this.fallback as any)?.updatePermissionGroup ? (this.fallback as any).updatePermissionGroup(id, data) : undefined;
   }
 
   async deletePermissionGroup(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgPermissionGroups).where(eq(pgPermissionGroups.id, id));
-      try { await this.fallback.deletePermissionGroup(id); } catch (_) {}
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgPermissionGroups).where(and(eq(pgPermissionGroups.tenantId, tenantId), eq(pgPermissionGroups.id, id)));
+      try { await (this.fallback as any)?.deletePermissionGroup?.(id); } catch (_) {}
       return true;
     } catch (e) {
       console.error("[PostgresStorage] deletePermissionGroup error:", e);
-      return this.fallback.deletePermissionGroup(id);
+      return (this.fallback as any)?.deletePermissionGroup ? (this.fallback as any).deletePermissionGroup(id) : false;
     }
   }
 
@@ -4371,7 +5103,13 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getRole(id: string): Promise<Role | undefined> {
     try {
-      const [r] = await pgDb.select().from(pgRoles).where(or(eq(pgRoles.id, id), eq(pgRoles.name, id))).limit(1);
+      const tenantId = await this.getTenantId();
+      const [r] = await pgDb.select().from(pgRoles)
+        .where(and(
+          eq(pgRoles.tenantId, tenantId),
+          or(eq(pgRoles.id, id), eq(pgRoles.name, id))
+        ))
+        .limit(1);
       if (r) {
         return {
           id: r.id,
@@ -4482,6 +5220,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateRole(id: string, data: any): Promise<Role> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.description !== undefined) updateValues.description = data.description;
@@ -4493,7 +5232,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgRoles)
         .set(updateValues)
-        .where(eq(pgRoles.id, id))
+        .where(and(eq(pgRoles.tenantId, tenantId), eq(pgRoles.id, id)))
         .returning();
 
       try { await this.fallback.updateRole(id, data); } catch (_) {}
@@ -4519,7 +5258,8 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async deleteRole(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgRoles).where(eq(pgRoles.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgRoles).where(and(eq(pgRoles.tenantId, tenantId), eq(pgRoles.id, id)));
       try { await this.fallback.deleteRole(id); } catch (_) {}
       return true;
     } catch (e) {
@@ -4530,8 +5270,13 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getUserRoleAssignments(userId: string): Promise<UserRoleAssignment[]> {
     try {
+      const tenantId = await this.getTenantId();
       const rows = await pgDb.select().from(pgUserRoleAssignments)
-        .where(and(eq(pgUserRoleAssignments.userId, userId), eq(pgUserRoleAssignments.isActive, true)));
+        .where(and(
+          eq(pgUserRoleAssignments.tenantId, tenantId),
+          eq(pgUserRoleAssignments.userId, userId),
+          eq(pgUserRoleAssignments.isActive, true)
+        ));
       return rows.map(r => ({
         id: r.id,
         userId: r.userId,
@@ -4550,7 +5295,13 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getRoleAssignment(id: string): Promise<UserRoleAssignment | undefined> {
     try {
-      const [r] = await pgDb.select().from(pgUserRoleAssignments).where(eq(pgUserRoleAssignments.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [r] = await pgDb.select().from(pgUserRoleAssignments)
+        .where(and(
+          eq(pgUserRoleAssignments.tenantId, tenantId),
+          eq(pgUserRoleAssignments.id, id)
+        ))
+        .limit(1);
       if (r) {
         return {
           id: r.id,
@@ -4601,9 +5352,14 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async revokeUserRole(userId: string, roleId: string): Promise<boolean> {
     try {
+      const tenantId = await this.getTenantId();
       await pgDb.update(pgUserRoleAssignments)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(and(eq(pgUserRoleAssignments.userId, userId), eq(pgUserRoleAssignments.roleId, roleId)));
+        .where(and(
+          eq(pgUserRoleAssignments.tenantId, tenantId),
+          eq(pgUserRoleAssignments.userId, userId),
+          eq(pgUserRoleAssignments.roleId, roleId)
+        ));
       try { await this.fallback.revokeUserRole(userId, roleId); } catch (_) {}
       return true;
     } catch (e) {
@@ -4614,7 +5370,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getUserPermissionOverrides(userId: string): Promise<PermissionOverride[]> {
     try {
-      const rows = await pgDb.select().from(pgPermissionOverrides).where(eq(pgPermissionOverrides.userId, userId));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb.select().from(pgPermissionOverrides)
+        .where(and(
+          eq(pgPermissionOverrides.tenantId, tenantId),
+          eq(pgPermissionOverrides.userId, userId)
+        ));
       return rows.map(r => ({
         id: r.id,
         userId: r.userId,
@@ -4666,7 +5427,12 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async revokePermissionOverride(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgPermissionOverrides).where(eq(pgPermissionOverrides.id, id));
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgPermissionOverrides)
+        .where(and(
+          eq(pgPermissionOverrides.tenantId, tenantId),
+          eq(pgPermissionOverrides.id, id)
+        ));
       try { await this.fallback.revokePermissionOverride(id); } catch (_) {}
       return true;
     } catch (e) {
@@ -4680,7 +5446,13 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getAttendancePolicy(id: string): Promise<AttendancePolicy | undefined> {
     try {
-      const [p] = await pgDb.select().from(pgAttendancePolicies).where(eq(pgAttendancePolicies.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [p] = await pgDb.select().from(pgAttendancePolicies)
+        .where(and(
+          eq(pgAttendancePolicies.tenantId, tenantId),
+          eq(pgAttendancePolicies.id, id)
+        ))
+        .limit(1);
       if (p) {
         return {
           id: p.id,
@@ -4838,6 +5610,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateAttendancePolicy(id: string, data: any): Promise<AttendancePolicy> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.department !== undefined) updateValues.department = data.department;
@@ -4857,7 +5630,10 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgAttendancePolicies)
         .set(updateValues)
-        .where(eq(pgAttendancePolicies.id, id))
+        .where(and(
+          eq(pgAttendancePolicies.tenantId, tenantId),
+          eq(pgAttendancePolicies.id, id)
+        ))
         .returning();
 
       try { await this.fallback.updateAttendancePolicy(id, data); } catch (_) {}
@@ -4895,7 +5671,13 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getPayrollFieldConfig(id: string): Promise<PayrollFieldConfig | undefined> {
     try {
-      const [cfg] = await pgDb.select().from(pgPayrollFieldConfigs).where(eq(pgPayrollFieldConfigs.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [cfg] = await pgDb.select().from(pgPayrollFieldConfigs)
+        .where(and(
+          eq(pgPayrollFieldConfigs.tenantId, tenantId),
+          eq(pgPayrollFieldConfigs.id, id)
+        ))
+        .limit(1);
       if (cfg) {
         return {
           id: cfg.id,
@@ -4915,7 +5697,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getPayrollFieldConfig error:", e);
     }
-    return this.fallback.getPayrollFieldConfig(id);
+    return (this.fallback as any)?.getPayrollFieldConfig ? (this.fallback as any).getPayrollFieldConfig(id) : undefined;
   }
 
   async listPayrollFieldConfigs(filters?: any): Promise<PayrollFieldConfig[]> {
@@ -4944,7 +5726,7 @@ async getLeave(id: string): Promise<any | undefined> {
       }));
     } catch (e) {
       console.error("[PostgresStorage] listPayrollFieldConfigs error:", e);
-      return this.fallback.listPayrollFieldConfigs(filters);
+      return (this.fallback.listPayrollFieldConfigs as any)(filters);
     }
   }
 
@@ -4988,6 +5770,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updatePayrollFieldConfig(id: string, data: any): Promise<PayrollFieldConfig> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.displayName !== undefined) updateValues.displayName = data.displayName;
@@ -5002,7 +5785,10 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgPayrollFieldConfigs)
         .set(updateValues)
-        .where(eq(pgPayrollFieldConfigs.id, id))
+        .where(and(
+          eq(pgPayrollFieldConfigs.tenantId, tenantId),
+          eq(pgPayrollFieldConfigs.id, id)
+        ))
         .returning();
 
       try { await this.fallback.updatePayrollFieldConfig(id, data); } catch (_) {}
@@ -5025,17 +5811,21 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] updatePayrollFieldConfig error:", e);
     }
-    return this.fallback.updatePayrollFieldConfig(id, data);
+    return (this.fallback as any)?.updatePayrollFieldConfig ? (this.fallback as any).updatePayrollFieldConfig(id, data) : undefined;
   }
 
   async deletePayrollFieldConfig(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgPayrollFieldConfigs).where(eq(pgPayrollFieldConfigs.id, id));
-      try { await this.fallback.deletePayrollFieldConfig(id); } catch (_) {}
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgPayrollFieldConfigs).where(and(
+        eq(pgPayrollFieldConfigs.tenantId, tenantId),
+        eq(pgPayrollFieldConfigs.id, id)
+      ));
+      try { await (this.fallback as any)?.deletePayrollFieldConfig?.(id); } catch (_) {}
       return true;
     } catch (e) {
       console.error("[PostgresStorage] deletePayrollFieldConfig error:", e);
-      return this.fallback.deletePayrollFieldConfig(id);
+      return (this.fallback as any)?.deletePayrollFieldConfig ? (this.fallback as any).deletePayrollFieldConfig(id) : false;
     }
   }
 
@@ -5044,7 +5834,13 @@ async getLeave(id: string): Promise<any | undefined> {
   // ===================================================================
   async getDepartment(id: string): Promise<Department | undefined> {
     try {
-      const [dept] = await pgDb.select().from(pgDepartments).where(eq(pgDepartments.id, id)).limit(1);
+      const tenantId = await this.getTenantId();
+      const [dept] = await pgDb.select().from(pgDepartments)
+        .where(and(
+          eq(pgDepartments.tenantId, tenantId),
+          eq(pgDepartments.id, id)
+        ))
+        .limit(1);
       if (dept) {
         return {
           id: dept.id,
@@ -5060,7 +5856,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDepartment error:", e);
     }
-    return this.fallback.getDepartment(id);
+    return (this.fallback as any)?.getDepartment ? (this.fallback as any).getDepartment(id) : undefined;
   }
 
   async getDepartmentByName(name: string): Promise<Department | undefined> {
@@ -5084,7 +5880,7 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDepartmentByName error:", e);
     }
-    return this.fallback.getDepartmentByName(name);
+    return (this.fallback as any)?.getDepartmentByName ? (this.fallback as any).getDepartmentByName(name) : undefined;
   }
 
   async createDepartment(data: any): Promise<Department> {
@@ -5099,7 +5895,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive !== undefined ? data.isActive : true,
       }).returning();
 
-      try { await this.fallback.createDepartment(data); } catch (_) {}
+      try { await (this.fallback as any)?.createDepartment?.(data); } catch (_) {}
       return {
         id: created.id,
         name: created.name,
@@ -5112,12 +5908,13 @@ async getLeave(id: string): Promise<any | undefined> {
       } as Department;
     } catch (e) {
       console.error("[PostgresStorage] createDepartment error:", e);
-      return this.fallback.createDepartment(data);
+      return (this.fallback as any)?.createDepartment ? (this.fallback as any).createDepartment(data) : undefined;
     }
   }
 
   async updateDepartment(id: string, data: any): Promise<Department> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.code !== undefined) updateValues.code = data.code;
@@ -5127,10 +5924,13 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [updated] = await pgDb.update(pgDepartments)
         .set(updateValues)
-        .where(eq(pgDepartments.id, id))
+        .where(and(
+          eq(pgDepartments.tenantId, tenantId),
+          eq(pgDepartments.id, id)
+        ))
         .returning();
 
-      try { await this.fallback.updateDepartment(id, data); } catch (_) {}
+      try { await (this.fallback as any)?.updateDepartment?.(id, data); } catch (_) {}
       if (updated) {
         return {
           id: updated.id,
@@ -5146,17 +5946,21 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] updateDepartment error:", e);
     }
-    return this.fallback.updateDepartment(id, data);
+    return (this.fallback as any)?.updateDepartment ? (this.fallback as any).updateDepartment(id, data) : undefined;
   }
 
   async deleteDepartment(id: string): Promise<boolean> {
     try {
-      await pgDb.delete(pgDepartments).where(eq(pgDepartments.id, id));
-      try { await this.fallback.deleteDepartment(id); } catch (_) {}
+      const tenantId = await this.getTenantId();
+      await pgDb.delete(pgDepartments).where(and(
+        eq(pgDepartments.tenantId, tenantId),
+        eq(pgDepartments.id, id)
+      ));
+      try { await (this.fallback as any)?.deleteDepartment?.(id); } catch (_) {}
       return true;
     } catch (e) {
       console.error("[PostgresStorage] deleteDepartment error:", e);
-      return this.fallback.deleteDepartment(id);
+      return (this.fallback as any)?.deleteDepartment ? (this.fallback as any).deleteDepartment(id) : false;
     }
   }
 }

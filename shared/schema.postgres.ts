@@ -531,6 +531,7 @@ export const fixedHolidays = pgTable("fixed_holidays", {
   applicableDepartments: jsonb("applicable_departments").default([]),
   description: text("description"),
   createdBy: varchar("created_by", { length: 128 }),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });

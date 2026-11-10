@@ -4,7 +4,7 @@
  */
 
 import { db as pgDb } from "../db";
-import { siteVisits as pgSiteVisits } from "@shared/schema.postgres";
+import { siteVisits as pgSiteVisits, tenants } from "@shared/schema.postgres";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
@@ -23,6 +23,20 @@ import crypto from "crypto";
 
 export class SiteVisitService {
   private collection = firestoreDb.collection('siteVisits');
+  private defaultTenantId: string | null = null;
+
+  private async getTenantId(tenantId?: string): Promise<string> {
+    if (tenantId) return tenantId;
+    if (this.defaultTenantId) return this.defaultTenantId;
+    try {
+      const [defaultTenant] = await pgDb.select().from(tenants).where(eq(tenants.slug, "default")).limit(1);
+      if (defaultTenant) {
+        this.defaultTenantId = defaultTenant.id;
+        return defaultTenant.id;
+      }
+    } catch (_) {}
+    return "adc11a73-7ef8-417b-b930-28d1d855d707";
+  }
 
   /**
    * Helper to convert PostgreSQL row to standard SiteVisit
@@ -112,7 +126,7 @@ export class SiteVisitService {
   async createSiteVisit(data: InsertSiteVisit): Promise<SiteVisit> {
     try {
       const id = (data as any).id || crypto.randomUUID();
-      const tenantId = (data as any).tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const tenantId = await this.getTenantId((data as any).tenantId);
       const now = new Date();
 
       const insertValues: any = {
@@ -282,11 +296,17 @@ export class SiteVisitService {
   /**
    * Get site visits by user ID
    */
-  async getSiteVisitsByUser(userId: string, limit = 50): Promise<SiteVisit[]> {
+  async getSiteVisitsByUser(userId: string, limit = 50, tenantId?: string): Promise<SiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgSiteVisits)
-        .where(eq(pgSiteVisits.userId, userId))
+        .where(
+          and(
+            eq(pgSiteVisits.tenantId, resolvedTenantId),
+            eq(pgSiteVisits.userId, userId)
+          )
+        )
         .orderBy(desc(pgSiteVisits.siteInTime))
         .limit(limit);
 
@@ -306,11 +326,17 @@ export class SiteVisitService {
   /**
    * Get site visits by department
    */
-  async getSiteVisitsByDepartment(department: 'technical' | 'marketing' | 'admin', limit = 100): Promise<SiteVisit[]> {
+  async getSiteVisitsByDepartment(department: 'technical' | 'marketing' | 'admin', limit = 100, tenantId?: string): Promise<SiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgSiteVisits)
-        .where(eq(pgSiteVisits.department, department))
+        .where(
+          and(
+            eq(pgSiteVisits.tenantId, resolvedTenantId),
+            eq(pgSiteVisits.department, department)
+          )
+        )
         .orderBy(desc(pgSiteVisits.siteInTime))
         .limit(limit);
 
@@ -329,11 +355,17 @@ export class SiteVisitService {
   /**
    * Get active (in-progress) site visits
    */
-  async getActiveSiteVisits(): Promise<SiteVisit[]> {
+  async getActiveSiteVisits(tenantId?: string): Promise<SiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgSiteVisits)
-        .where(eq(pgSiteVisits.status, 'in_progress'))
+        .where(
+          and(
+            eq(pgSiteVisits.tenantId, resolvedTenantId),
+            eq(pgSiteVisits.status, 'in_progress')
+          )
+        )
         .orderBy(desc(pgSiteVisits.siteInTime));
 
       return rows.map(r => this.convertPostgresToSiteVisit(r));
@@ -348,11 +380,13 @@ export class SiteVisitService {
   /**
    * Get site visits by date range
    */
-  async getSiteVisitsByDateRange(startDate: Date, endDate: Date): Promise<SiteVisit[]> {
+  async getSiteVisitsByDateRange(startDate: Date, endDate: Date, tenantId?: string): Promise<SiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgSiteVisits)
         .where(and(
+          eq(pgSiteVisits.tenantId, resolvedTenantId),
           gte(pgSiteVisits.siteInTime, startDate),
           lte(pgSiteVisits.siteInTime, endDate)
         ))
@@ -374,6 +408,7 @@ export class SiteVisitService {
    * Get site visits with dynamic filters (using indexed SQL queries)
    */
   async getSiteVisitsWithFilters(filters: {
+    tenantId?: string;
     userId?: string;
     department?: 'technical' | 'marketing' | 'admin';
     status?: 'in_progress' | 'completed' | 'cancelled';
@@ -384,7 +419,8 @@ export class SiteVisitService {
     limit?: number;
   }): Promise<SiteVisit[]> {
     try {
-      const conditions: any[] = [];
+      const resolvedTenantId = await this.getTenantId(filters.tenantId);
+      const conditions: any[] = [eq(pgSiteVisits.tenantId, resolvedTenantId)];
 
       if (filters.userId) conditions.push(eq(pgSiteVisits.userId, filters.userId));
       if (filters.department) conditions.push(eq(pgSiteVisits.department, filters.department));
@@ -394,12 +430,9 @@ export class SiteVisitService {
       if (filters.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
       if (filters.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
 
-      let query = pgDb.select().from(pgSiteVisits);
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as any;
-      }
-
-      const rows = await query
+      const rows = await pgDb.select()
+        .from(pgSiteVisits)
+        .where(and(...conditions))
         .orderBy(desc(pgSiteVisits.siteInTime))
         .limit(filters.limit || 100);
 
@@ -471,22 +504,19 @@ export class SiteVisitService {
    * Get site visit analytics/statistics directly from PostgreSQL
    */
   async getSiteVisitStats(filters?: {
+    tenantId?: string;
     department?: 'technical' | 'marketing' | 'admin';
     startDate?: Date;
     endDate?: Date;
   }) {
     try {
-      const conditions: any[] = [];
+      const resolvedTenantId = await this.getTenantId(filters?.tenantId);
+      const conditions: any[] = [eq(pgSiteVisits.tenantId, resolvedTenantId)];
       if (filters?.department) conditions.push(eq(pgSiteVisits.department, filters.department));
       if (filters?.startDate) conditions.push(gte(pgSiteVisits.siteInTime, filters.startDate));
       if (filters?.endDate) conditions.push(lte(pgSiteVisits.siteInTime, filters.endDate));
 
-      let query = pgDb.select().from(pgSiteVisits);
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as any;
-      }
-
-      const rows = await query;
+      const rows = await pgDb.select().from(pgSiteVisits).where(and(...conditions));
       return {
         total: rows.length,
         inProgress: rows.filter(r => r.status === 'in_progress').length,
@@ -511,10 +541,12 @@ export class SiteVisitService {
   /**
    * Get all site visits for monitoring dashboard
    */
-  async getAllSiteVisitsForMonitoring(): Promise<SiteVisit[]> {
+  async getAllSiteVisitsForMonitoring(tenantId?: string): Promise<SiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgSiteVisits)
+        .where(eq(pgSiteVisits.tenantId, resolvedTenantId))
         .orderBy(desc(pgSiteVisits.siteInTime))
         .limit(500);
 

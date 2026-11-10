@@ -4,7 +4,7 @@
  */
 
 import { db as pgDb } from "../db";
-import { followUpVisits as pgFollowUpVisits, siteVisits as pgSiteVisits } from "@shared/schema.postgres";
+import { followUpVisits as pgFollowUpVisits, siteVisits as pgSiteVisits, tenants } from "@shared/schema.postgres";
 import { eq, and, desc } from "drizzle-orm";
 import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
@@ -21,6 +21,20 @@ import crypto from "crypto";
 export class FollowUpService {
   private collection = firestoreDb.collection('followUpVisits');
   private siteVisitsCollection = firestoreDb.collection('siteVisits');
+  private defaultTenantId: string | null = null;
+
+  private async getTenantId(tenantId?: string): Promise<string> {
+    if (tenantId) return tenantId;
+    if (this.defaultTenantId) return this.defaultTenantId;
+    try {
+      const [defaultTenant] = await pgDb.select().from(tenants).where(eq(tenants.slug, "default")).limit(1);
+      if (defaultTenant) {
+        this.defaultTenantId = defaultTenant.id;
+        return defaultTenant.id;
+      }
+    } catch (_) {}
+    return "adc11a73-7ef8-417b-b930-28d1d855d707";
+  }
 
   /**
    * Helper to convert PostgreSQL row to standard FollowUpSiteVisit
@@ -110,7 +124,7 @@ export class FollowUpService {
       }
 
       const id = crypto.randomUUID();
-      const tenantId = (data as any).tenantId || "adc11a73-7ef8-417b-b930-28d1d855d707";
+      const tenantId = await this.getTenantId((data as any).tenantId);
       const now = new Date();
 
       const insertValues: any = {
@@ -294,11 +308,17 @@ export class FollowUpService {
   /**
    * Get all follow-ups for an original visit
    */
-  async getFollowUpsByOriginalVisit(originalVisitId: string): Promise<FollowUpSiteVisit[]> {
+  async getFollowUpsByOriginalVisit(originalVisitId: string, tenantId?: string): Promise<FollowUpSiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgFollowUpVisits)
-        .where(eq(pgFollowUpVisits.originalVisitId, originalVisitId))
+        .where(
+          and(
+            eq(pgFollowUpVisits.tenantId, resolvedTenantId),
+            eq(pgFollowUpVisits.originalVisitId, originalVisitId)
+          )
+        )
         .orderBy(desc(pgFollowUpVisits.createdAt));
 
       return rows.map(r => this.convertPostgresToFollowUp(r));
@@ -313,10 +333,12 @@ export class FollowUpService {
   /**
    * Get ALL follow-ups (for admin/monitoring)
    */
-  async getAllFollowUps(): Promise<FollowUpSiteVisit[]> {
+  async getAllFollowUps(tenantId?: string): Promise<FollowUpSiteVisit[]> {
     try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const rows = await pgDb.select()
         .from(pgFollowUpVisits)
+        .where(eq(pgFollowUpVisits.tenantId, resolvedTenantId))
         .orderBy(desc(pgFollowUpVisits.createdAt));
 
       return rows.map(r => this.convertPostgresToFollowUp(r));

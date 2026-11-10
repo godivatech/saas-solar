@@ -43,6 +43,8 @@ import {
 // Import additional schemas from shared
 import { paymentModes, maritalStatus as sharedMaritalStatus, bloodGroups as sharedBloodGroups, employeeStatus as sharedEmployeeStatus } from "@shared/schema";
 
+export type { LeaveBalance, LeaveApplication, FixedHoliday };
+
 // Define our schemas since we're not using drizzle anymore
 export const insertUserSchema = z.object({
   uid: z.string(),
