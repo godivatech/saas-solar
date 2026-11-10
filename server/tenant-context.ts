@@ -22,3 +22,4 @@ export function getActiveTenantId(): string | undefined {
 export function runWithTenant<T>(tenantId: string, fn: () => T): T {
   return tenantContextStorage.run({ tenantId }, fn);
 }
+

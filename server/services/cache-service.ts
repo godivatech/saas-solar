@@ -1,4 +1,5 @@
 import { User } from '../storage';
+import { getActiveTenantId } from '../tenant-context';
 
 /**
  * In-memory cache service for user data and session management
@@ -88,15 +89,18 @@ class CacheService {
   }
 
   /**
-   * Get all cached users (for bulk operations)
+   * Get all cached users (for bulk operations, scoped to active tenant)
    */
   getAllUsers(): User[] {
     const validUsers: User[] = [];
     const now = Date.now();
+    const activeTenantId = getActiveTenantId();
 
     this.userCache.forEach((cached, uid) => {
       if (now - cached.timestamp <= this.USER_CACHE_TTL) {
-        validUsers.push(cached.data);
+        if (!activeTenantId || (cached.data as any).tenantId === activeTenantId) {
+          validUsers.push(cached.data);
+        }
       } else {
         this.userCache.delete(uid);
       }
