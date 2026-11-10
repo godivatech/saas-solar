@@ -128,14 +128,23 @@ export class PostgresStorage implements IStorage {
       reportingManagerId: u.reportingManagerId || undefined,
       payrollGrade: u.payrollGrade || undefined,
       joinDate: u.joinDate || undefined,
+      dateOfLeaving: u.dateOfLeaving || undefined,
+      rehireDate: u.rehireDate || undefined,
       isActive: u.isActive,
       employeeStatus: u.employeeStatus as any,
       permissions: (u.permissions as string[]) || [],
-      phone: u.phone || undefined,
+      phone: u.phone || u.phoneNumber || undefined,
+      contactNumber: u.phone || u.phoneNumber || undefined,
       profilePhotoUrl: u.profilePhotoUrl || undefined,
+      photoURL: u.profilePhotoUrl || undefined,
       aadharCardUrl: u.aadharCardUrl || undefined,
       panCardUrl: u.panCardUrl || undefined,
       bankDetails: u.bankDetails || undefined,
+      bankAccountNumber: u.bankAccountNumber || undefined,
+      ifscCode: u.bankIfsc || undefined,
+      panNumber: u.panNumber || undefined,
+      uanNumber: u.uanNumber || undefined,
+      esiNumber: u.esiNumber || undefined,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt
     } as unknown as User;
@@ -150,20 +159,7 @@ export class PostgresStorage implements IStorage {
         .limit(1);
 
       if (u) {
-        return {
-          id: u.id,
-          uid: u.firebaseUid,
-          email: u.email,
-          displayName: u.displayName,
-          role: u.role as any,
-          department: u.department as any,
-          designation: u.designation as any,
-          employeeId: u.employeeId || undefined,
-          isActive: u.isActive,
-          employeeStatus: u.employeeStatus as any,
-          permissions: (u.permissions as string[]) || [],
-          createdAt: u.createdAt
-        };
+        return this.mapUser(u);
       }
     } catch (e) {
       console.error("[PostgresStorage] getUser error, delegating to fallback:", e);
@@ -180,20 +176,7 @@ export class PostgresStorage implements IStorage {
         .limit(1);
 
       if (u) {
-        return {
-          id: u.id,
-          uid: u.firebaseUid,
-          email: u.email,
-          displayName: u.displayName,
-          role: u.role as any,
-          department: u.department as any,
-          designation: u.designation as any,
-          employeeId: u.employeeId || undefined,
-          isActive: u.isActive,
-          employeeStatus: u.employeeStatus as any,
-          permissions: (u.permissions as string[]) || [],
-          createdAt: u.createdAt
-        };
+        return this.mapUser(u);
       }
     } catch (e) {
       console.error("[PostgresStorage] getUserByEmail error, delegating:", e);
@@ -203,21 +186,13 @@ export class PostgresStorage implements IStorage {
 
   async listUsers(): Promise<User[]> {
     try {
-      const rows = await pgDb.select().from(pgUsers).orderBy(desc(pgUsers.createdAt));
-      return rows.map(u => ({
-        id: u.id,
-        uid: u.firebaseUid,
-        email: u.email,
-        displayName: u.displayName,
-        role: u.role as any,
-        department: u.department as any,
-        designation: u.designation as any,
-        employeeId: u.employeeId || undefined,
-        isActive: u.isActive,
-        employeeStatus: u.employeeStatus as any,
-        permissions: (u.permissions as string[]) || [],
-        createdAt: u.createdAt
-      }));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgUsers)
+        .where(eq(pgUsers.tenantId, tenantId))
+        .orderBy(desc(pgUsers.createdAt));
+      return rows.map(u => this.mapUser(u));
     } catch (e) {
       console.error("[PostgresStorage] listUsers error, delegating:", e);
       return (this.fallback as any).listUsers ? (this.fallback as any).listUsers() : [];
@@ -236,6 +211,22 @@ export class PostgresStorage implements IStorage {
         department: data.department || "operations",
         designation: data.designation || null,
         employeeId: data.employeeId || null,
+        reportingManagerId: data.reportingManagerId || null,
+        phone: data.phone || data.contactNumber || data.phoneNumber || null,
+        phoneNumber: data.phoneNumber || data.phone || data.contactNumber || null,
+        payrollGrade: data.payrollGrade || null,
+        joinDate: data.joinDate ? new Date(data.joinDate) : null,
+        dateOfLeaving: data.dateOfLeaving ? new Date(data.dateOfLeaving) : null,
+        rehireDate: data.rehireDate ? new Date(data.rehireDate) : null,
+        profilePhotoUrl: data.profilePhotoUrl || data.photoURL || null,
+        aadharCardUrl: data.aadharCardUrl || null,
+        panCardUrl: data.panCardUrl || null,
+        bankAccountNumber: data.bankAccountNumber || null,
+        bankIfsc: data.ifscCode || data.bankIfsc || null,
+        panNumber: data.panNumber || null,
+        uanNumber: data.uanNumber || null,
+        esiNumber: data.esiNumber || null,
+        bankDetails: data.bankDetails || {},
         isActive: data.isActive ?? true,
         employeeStatus: data.employeeStatus || "active",
         permissions: data.permissions || []
@@ -243,20 +234,7 @@ export class PostgresStorage implements IStorage {
 
       try { await this.fallback.createUser(data); } catch (_) {}
 
-      return {
-        id: u.id,
-        uid: u.firebaseUid,
-        email: u.email,
-        displayName: u.displayName,
-        role: u.role as any,
-        department: u.department as any,
-        designation: u.designation as any,
-        employeeId: u.employeeId || undefined,
-        isActive: u.isActive,
-        employeeStatus: u.employeeStatus as any,
-        permissions: (u.permissions as string[]) || [],
-        createdAt: u.createdAt
-      };
+      return this.mapUser(u);
     } catch (e) {
       console.error("[PostgresStorage] createUser error, delegating:", e);
       return this.fallback.createUser(data);
@@ -272,6 +250,26 @@ export class PostgresStorage implements IStorage {
       if (data.department !== undefined) updateValues.department = data.department;
       if (data.designation !== undefined) updateValues.designation = data.designation;
       if (data.employeeId !== undefined) updateValues.employeeId = data.employeeId;
+      if (data.reportingManagerId !== undefined) updateValues.reportingManagerId = data.reportingManagerId;
+      if (data.phone !== undefined || data.phoneNumber !== undefined || data.contactNumber !== undefined) {
+        const p = data.phone || data.phoneNumber || data.contactNumber;
+        updateValues.phone = p;
+        updateValues.phoneNumber = p;
+      }
+      if (data.payrollGrade !== undefined) updateValues.payrollGrade = data.payrollGrade;
+      if (data.joinDate !== undefined) updateValues.joinDate = data.joinDate ? new Date(data.joinDate) : null;
+      if (data.dateOfLeaving !== undefined) updateValues.dateOfLeaving = data.dateOfLeaving ? new Date(data.dateOfLeaving) : null;
+      if (data.rehireDate !== undefined) updateValues.rehireDate = data.rehireDate ? new Date(data.rehireDate) : null;
+      if (data.profilePhotoUrl !== undefined) updateValues.profilePhotoUrl = data.profilePhotoUrl;
+      if (data.photoURL !== undefined) updateValues.profilePhotoUrl = data.photoURL;
+      if (data.aadharCardUrl !== undefined) updateValues.aadharCardUrl = data.aadharCardUrl;
+      if (data.panCardUrl !== undefined) updateValues.panCardUrl = data.panCardUrl;
+      if (data.bankAccountNumber !== undefined) updateValues.bankAccountNumber = data.bankAccountNumber;
+      if (data.ifscCode !== undefined || data.bankIfsc !== undefined) updateValues.bankIfsc = data.ifscCode || data.bankIfsc;
+      if (data.panNumber !== undefined) updateValues.panNumber = data.panNumber;
+      if (data.uanNumber !== undefined) updateValues.uanNumber = data.uanNumber;
+      if (data.esiNumber !== undefined) updateValues.esiNumber = data.esiNumber;
+      if (data.bankDetails !== undefined) updateValues.bankDetails = data.bankDetails;
       if (data.isActive !== undefined) updateValues.isActive = data.isActive;
       if (data.employeeStatus !== undefined) updateValues.employeeStatus = data.employeeStatus;
       if (data.permissions !== undefined) updateValues.permissions = data.permissions;
@@ -285,20 +283,7 @@ export class PostgresStorage implements IStorage {
       try { await this.fallback.updateUser(id, data); } catch (_) {}
 
       if (u) {
-        return {
-          id: u.id,
-          uid: u.firebaseUid,
-          email: u.email,
-          displayName: u.displayName,
-          role: u.role as any,
-          department: u.department as any,
-          designation: u.designation as any,
-          employeeId: u.employeeId || undefined,
-          isActive: u.isActive,
-          employeeStatus: u.employeeStatus as any,
-          permissions: (u.permissions as string[]) || [],
-          createdAt: u.createdAt
-        };
+        return this.mapUser(u);
       }
     } catch (e) {
       console.error("[PostgresStorage] updateUser error, delegating:", e);
@@ -694,37 +679,46 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   // QUOTATIONS
   // ===================================================================
+  private mapQuotation(q: any): Quotation {
+    return {
+      id: q.id,
+      quotationNumber: q.quotationNumber,
+      revision: q.revision,
+      customerId: q.customerId,
+      projectType: q.projectType as any,
+      systemKw: Number(q.systemKw),
+      ratePerKw: Number(q.ratePerKw) || 0,
+      basePrice: Number(q.basePrice),
+      gstPercentage: Number(q.gstPercentage),
+      gstAmount: Number(q.gstAmount),
+      totalCost: Number(q.totalCost),
+      subsidyAmount: Number(q.subsidyAmount),
+      customerPayment: Number(q.customerPayment),
+      roundoff: Number(q.roundoff) || 0,
+      status: q.status as any,
+      source: q.source as any,
+      preparedBy: q.preparedBy || undefined,
+      projects: (q.projects as any[]) || [],
+      customBillOfMaterials: (q.customBillOfMaterials as any[]) || undefined,
+      customerNotes: q.customerNotes || undefined,
+      internalNotes: q.internalNotes || undefined,
+      validUntil: q.validUntil || undefined,
+      createdBy: q.createdBy || undefined,
+      updatedBy: q.updatedBy || undefined,
+      createdAt: q.createdAt,
+      updatedAt: q.updatedAt
+    } as Quotation;
+  }
+
   async listQuotations(): Promise<Quotation[]> {
     try {
-      const rows = await pgDb.select().from(pgQuotations).orderBy(desc(pgQuotations.createdAt));
-      return rows.map(q => ({
-        id: q.id,
-        quotationNumber: q.quotationNumber,
-        revision: q.revision,
-        customerId: q.customerId,
-        projectType: q.projectType as any,
-        systemKw: Number(q.systemKw),
-        ratePerKw: Number(q.ratePerKw) || 0,
-        basePrice: Number(q.basePrice),
-        gstPercentage: Number(q.gstPercentage),
-        gstAmount: Number(q.gstAmount),
-        totalCost: Number(q.totalCost),
-        subsidyAmount: Number(q.subsidyAmount),
-        customerPayment: Number(q.customerPayment),
-        roundoff: Number(q.roundoff) || 0,
-        status: q.status as any,
-        source: q.source as any,
-        preparedBy: q.preparedBy || undefined,
-        projects: (q.projects as any[]) || [],
-        customBillOfMaterials: (q.customBillOfMaterials as any[]) || undefined,
-        customerNotes: q.customerNotes || undefined,
-        internalNotes: q.internalNotes || undefined,
-        validUntil: q.validUntil || undefined,
-        createdBy: q.createdBy || undefined,
-        updatedBy: q.updatedBy || undefined,
-        createdAt: q.createdAt,
-        updatedAt: q.updatedAt
-      } as Quotation));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgQuotations)
+        .where(eq(pgQuotations.tenantId, tenantId))
+        .orderBy(desc(pgQuotations.createdAt));
+      return rows.map(q => this.mapQuotation(q));
     } catch (e) {
       console.error("[PostgresStorage] listQuotations error, delegating:", e);
       return this.fallback.listQuotations();
@@ -735,34 +729,7 @@ export class PostgresStorage implements IStorage {
     try {
       const [q] = await pgDb.select().from(pgQuotations).where(eq(pgQuotations.id, id)).limit(1);
       if (q) {
-        return {
-          id: q.id,
-          quotationNumber: q.quotationNumber,
-          revision: q.revision,
-          customerId: q.customerId,
-          projectType: q.projectType as any,
-          systemKw: Number(q.systemKw),
-          ratePerKw: Number(q.ratePerKw) || 0,
-          basePrice: Number(q.basePrice),
-          gstPercentage: Number(q.gstPercentage),
-          gstAmount: Number(q.gstAmount),
-          totalCost: Number(q.totalCost),
-          subsidyAmount: Number(q.subsidyAmount),
-          customerPayment: Number(q.customerPayment),
-          roundoff: Number(q.roundoff) || 0,
-          status: q.status as any,
-          source: q.source as any,
-          preparedBy: q.preparedBy || undefined,
-          projects: (q.projects as any[]) || [],
-          customBillOfMaterials: (q.customBillOfMaterials as any[]) || undefined,
-          customerNotes: q.customerNotes || undefined,
-          internalNotes: q.internalNotes || undefined,
-          validUntil: q.validUntil || undefined,
-          createdBy: q.createdBy || undefined,
-          updatedBy: q.updatedBy || undefined,
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt
-        } as Quotation;
+        return this.mapQuotation(q);
       }
     } catch (e) {
       console.error("[PostgresStorage] getQuotation error:", e);
@@ -800,36 +767,22 @@ export class PostgresStorage implements IStorage {
         updatedBy: data.updatedBy || null
       }).returning();
 
-      try { await this.fallback.createQuotation(data); } catch (_) {}
+      try {
+        const enrichedForFallback = {
+          ...data,
+          quotationNumber: created.quotationNumber,
+          source: data.source || 'manual',
+          preparedBy: data.preparedBy || 'System',
+          projects: data.projects || [],
+          totalSystemCost: Number(created.totalCost),
+          totalCustomerPayment: Number(created.customerPayment),
+          advanceAmount: Math.round(Number(created.customerPayment) * 0.2),
+          balanceAmount: Math.round(Number(created.customerPayment) * 0.8)
+        };
+        await this.fallback.createQuotation(enrichedForFallback);
+      } catch (_) {}
 
-      return {
-        id: created.id,
-        quotationNumber: created.quotationNumber,
-        revision: created.revision,
-        customerId: created.customerId,
-        projectType: created.projectType as any,
-        systemKw: Number(created.systemKw),
-        ratePerKw: Number(created.ratePerKw) || 0,
-        basePrice: Number(created.basePrice),
-        gstPercentage: Number(created.gstPercentage),
-        gstAmount: Number(created.gstAmount),
-        totalCost: Number(created.totalCost),
-        subsidyAmount: Number(created.subsidyAmount),
-        customerPayment: Number(created.customerPayment),
-        roundoff: Number(created.roundoff) || 0,
-        status: created.status as any,
-        source: created.source as any,
-        preparedBy: created.preparedBy || undefined,
-        projects: (created.projects as any[]) || [],
-        customBillOfMaterials: (created.customBillOfMaterials as any[]) || undefined,
-        customerNotes: created.customerNotes || undefined,
-        internalNotes: created.internalNotes || undefined,
-        validUntil: created.validUntil || undefined,
-        createdBy: created.createdBy || undefined,
-        updatedBy: created.updatedBy || undefined,
-        createdAt: created.createdAt,
-        updatedAt: created.updatedAt
-      } as Quotation;
+      return this.mapQuotation(created);
     } catch (e) {
       console.error("[PostgresStorage] createQuotation error, delegating:", e);
       return this.fallback.createQuotation(data);
@@ -841,10 +794,24 @@ export class PostgresStorage implements IStorage {
       const updateValues: any = { updatedAt: new Date(), updatedBy };
       if (data.status !== undefined) updateValues.status = data.status;
       if (data.revision !== undefined) updateValues.revision = data.revision;
-      if (data.projects !== undefined) updateValues.projects = data.projects;
+      if (data.customerId !== undefined) updateValues.customerId = data.customerId;
+      if (data.projectType !== undefined) updateValues.projectType = data.projectType;
+      if (data.systemKw !== undefined) updateValues.systemKw = String(data.systemKw);
+      if (data.ratePerKw !== undefined) updateValues.ratePerKw = String(data.ratePerKw);
+      if (data.basePrice !== undefined) updateValues.basePrice = String(data.basePrice);
+      if (data.gstPercentage !== undefined) updateValues.gstPercentage = String(data.gstPercentage);
+      if (data.gstAmount !== undefined) updateValues.gstAmount = String(data.gstAmount);
       if (data.totalCost !== undefined) updateValues.totalCost = String(data.totalCost);
+      if (data.subsidyAmount !== undefined) updateValues.subsidyAmount = String(data.subsidyAmount);
       if (data.customerPayment !== undefined) updateValues.customerPayment = String(data.customerPayment);
+      if (data.roundoff !== undefined) updateValues.roundoff = String(data.roundoff);
+      if (data.source !== undefined) updateValues.source = data.source;
+      if (data.preparedBy !== undefined) updateValues.preparedBy = data.preparedBy;
+      if (data.projects !== undefined) updateValues.projects = data.projects;
       if (data.customBillOfMaterials !== undefined) updateValues.customBillOfMaterials = data.customBillOfMaterials;
+      if (data.customerNotes !== undefined) updateValues.customerNotes = data.customerNotes;
+      if (data.internalNotes !== undefined) updateValues.internalNotes = data.internalNotes;
+      if (data.validUntil !== undefined) updateValues.validUntil = data.validUntil ? new Date(data.validUntil) : null;
 
       const [updated] = await pgDb
         .update(pgQuotations)
@@ -855,34 +822,7 @@ export class PostgresStorage implements IStorage {
       try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) {}
 
       if (updated) {
-        return {
-          id: updated.id,
-          quotationNumber: updated.quotationNumber,
-          revision: updated.revision,
-          customerId: updated.customerId,
-          projectType: updated.projectType as any,
-          systemKw: Number(updated.systemKw),
-          ratePerKw: Number(updated.ratePerKw) || 0,
-          basePrice: Number(updated.basePrice),
-          gstPercentage: Number(updated.gstPercentage),
-          gstAmount: Number(updated.gstAmount),
-          totalCost: Number(updated.totalCost),
-          subsidyAmount: Number(updated.subsidyAmount),
-          customerPayment: Number(updated.customerPayment),
-          roundoff: Number(updated.roundoff) || 0,
-          status: updated.status as any,
-          source: updated.source as any,
-          preparedBy: updated.preparedBy || undefined,
-          projects: (updated.projects as any[]) || [],
-          customBillOfMaterials: (updated.customBillOfMaterials as any[]) || undefined,
-          customerNotes: updated.customerNotes || undefined,
-          internalNotes: updated.internalNotes || undefined,
-          validUntil: updated.validUntil || undefined,
-          createdBy: updated.createdBy || undefined,
-          updatedBy: updated.updatedBy || undefined,
-          createdAt: updated.createdAt,
-          updatedAt: updated.updatedAt
-        } as Quotation;
+        return this.mapQuotation(updated);
       }
     } catch (e) {
       console.error("[PostgresStorage] updateQuotation error, delegating:", e);
@@ -903,18 +843,27 @@ export class PostgresStorage implements IStorage {
   // ===================================================================
   // INVOICES & PAYMENTS
   // ===================================================================
+  private mapInvoice(inv: any): Invoice {
+    return {
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      quotationId: inv.quotationId || '',
+      customerId: inv.customerId,
+      total: Number(inv.totalAmount),
+      status: inv.status,
+      createdAt: inv.createdAt
+    } as Invoice;
+  }
+
   async listInvoices(): Promise<Invoice[]> {
     try {
-      const rows = await pgDb.select().from(pgInvoices).orderBy(desc(pgInvoices.createdAt));
-      return rows.map(inv => ({
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        quotationId: inv.quotationId || '',
-        customerId: inv.customerId,
-        total: Number(inv.totalAmount),
-        status: inv.status,
-        createdAt: inv.createdAt
-      } as Invoice));
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgInvoices)
+        .where(eq(pgInvoices.tenantId, tenantId))
+        .orderBy(desc(pgInvoices.createdAt));
+      return rows.map(inv => this.mapInvoice(inv));
     } catch (e) {
       console.error("[PostgresStorage] listInvoices error, delegating:", e);
       return this.fallback.listInvoices();
@@ -925,15 +874,7 @@ export class PostgresStorage implements IStorage {
     try {
       const [inv] = await pgDb.select().from(pgInvoices).where(eq(pgInvoices.id, id)).limit(1);
       if (inv) {
-        return {
-          id: inv.id,
-          invoiceNumber: inv.invoiceNumber,
-          quotationId: inv.quotationId || '',
-          customerId: inv.customerId,
-          total: Number(inv.totalAmount),
-          status: inv.status,
-          createdAt: inv.createdAt
-        } as Invoice;
+        return this.mapInvoice(inv);
       }
       return undefined;
     } catch (e) {
@@ -962,15 +903,7 @@ export class PostgresStorage implements IStorage {
 
       try { await this.fallback.createInvoice(data); } catch (_) {}
 
-      return {
-        id: created.id,
-        invoiceNumber: created.invoiceNumber,
-        quotationId: created.quotationId || '',
-        customerId: created.customerId,
-        total: Number(created.totalAmount),
-        status: created.status,
-        createdAt: created.createdAt
-      } as Invoice;
+      return this.mapInvoice(created);
     } catch (e) {
       console.error("[PostgresStorage] createInvoice error, fallback:", e);
       return this.fallback.createInvoice(data);
@@ -985,20 +918,17 @@ export class PostgresStorage implements IStorage {
         updateValues.totalAmount = String(data.total);
         updateValues.baseAmount = String(data.total);
       }
+      if (data.paidAmount !== undefined) updateValues.paidAmount = String(data.paidAmount);
+      if (data.balanceDue !== undefined) updateValues.balanceDue = String(data.balanceDue);
+      if (data.dueDate !== undefined) updateValues.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+      if (data.paymentTerms !== undefined) updateValues.paymentTerms = data.paymentTerms;
+      if (data.notes !== undefined) updateValues.notes = data.notes;
 
       const [updated] = await pgDb.update(pgInvoices).set(updateValues).where(eq(pgInvoices.id, id)).returning();
       try { await this.fallback.updateInvoice(id, data); } catch (_) {}
 
       if (updated) {
-        return {
-          id: updated.id,
-          invoiceNumber: updated.invoiceNumber,
-          quotationId: updated.quotationId || '',
-          customerId: updated.customerId,
-          total: Number(updated.totalAmount),
-          status: updated.status,
-          createdAt: updated.createdAt
-        } as Invoice;
+        return this.mapInvoice(updated);
       }
     } catch (e) {
       console.error("[PostgresStorage] updateInvoice error:", e);
@@ -2654,10 +2584,16 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async getDepartmentTiming(department: string): Promise<any | undefined> {
     try {
+      const tenantId = await this.getTenantId();
       const [timing] = await pgDb
         .select()
         .from(pgDepartmentTimings)
-        .where(eq(pgDepartmentTimings.department, department.toLowerCase()))
+        .where(
+          and(
+            eq(pgDepartmentTimings.tenantId, tenantId),
+            eq(pgDepartmentTimings.department, department.toLowerCase().trim())
+          )
+        )
         .limit(1);
 
       if (timing) {
@@ -2680,7 +2616,11 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async listDepartmentTimings(): Promise<any[]> {
     try {
-      const rows = await pgDb.select().from(pgDepartmentTimings);
+      const tenantId = await this.getTenantId();
+      const rows = await pgDb
+        .select()
+        .from(pgDepartmentTimings)
+        .where(eq(pgDepartmentTimings.tenantId, tenantId));
       return rows.map(t => ({
         id: t.id,
         department: t.department,
@@ -2731,6 +2671,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
   async updateDepartmentTiming(department: string, data: any): Promise<any> {
     try {
+      const tenantId = await this.getTenantId();
       const updateValues: any = { updatedAt: new Date() };
       if (data.checkInTime !== undefined) updateValues.checkInTime = data.checkInTime;
       if (data.checkOutTime !== undefined) updateValues.checkOutTime = data.checkOutTime;
@@ -2742,7 +2683,12 @@ async getLeave(id: string): Promise<any | undefined> {
       const [updated] = await pgDb
         .update(pgDepartmentTimings)
         .set(updateValues)
-        .where(eq(pgDepartmentTimings.department, department.toLowerCase()))
+        .where(
+          and(
+            eq(pgDepartmentTimings.tenantId, tenantId),
+            eq(pgDepartmentTimings.department, department.toLowerCase().trim())
+          )
+        )
         .returning();
 
       try { await this.fallback.updateDepartmentTiming(department, data); } catch (_) {}
@@ -2756,18 +2702,34 @@ async getLeave(id: string): Promise<any | undefined> {
   async createDepartmentTiming(data: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
-      const [created] = await pgDb.insert(pgDepartmentTimings).values({
-        tenantId,
-        department: data.department.toLowerCase(),
-        checkInTime: data.checkInTime,
-        checkOutTime: data.checkOutTime,
-        workingHours: String(data.workingHours || 8),
-        autoCheckoutGraceMinutes: data.autoCheckoutGraceMinutes || 120,
-        weekendDays: data.weekendDays || [0],
-        isActive: data.isActive ?? true
-      }).returning();
+      const dept = data.department.toLowerCase().trim();
+      const [upserted] = await pgDb
+        .insert(pgDepartmentTimings)
+        .values({
+          tenantId,
+          department: dept,
+          checkInTime: data.checkInTime,
+          checkOutTime: data.checkOutTime,
+          workingHours: String(data.workingHours || 8),
+          autoCheckoutGraceMinutes: data.autoCheckoutGraceMinutes || 120,
+          weekendDays: data.weekendDays || [0],
+          isActive: data.isActive ?? true
+        })
+        .onConflictDoUpdate({
+          target: [pgDepartmentTimings.tenantId, pgDepartmentTimings.department],
+          set: {
+            checkInTime: data.checkInTime,
+            checkOutTime: data.checkOutTime,
+            workingHours: String(data.workingHours || 8),
+            autoCheckoutGraceMinutes: data.autoCheckoutGraceMinutes || 120,
+            weekendDays: data.weekendDays || [0],
+            isActive: data.isActive ?? true,
+            updatedAt: new Date()
+          }
+        })
+        .returning();
       try { await this.fallback.createDepartmentTiming(data); } catch (_) {}
-      return created;
+      return upserted;
     } catch (e) {
       console.error("[PostgresStorage] createDepartmentTiming error:", e);
       return this.fallback.createDepartmentTiming(data);

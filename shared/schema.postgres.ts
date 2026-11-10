@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, numeric, integer, timestamp, boolean, jsonb, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, numeric, integer, timestamp, boolean, jsonb, doublePrecision, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ===================================================================
@@ -54,6 +54,8 @@ export const users = pgTable("users", {
   employeeStatus: varchar("employee_status", { length: 30 }).default("active").notNull(),
   permissions: jsonb("permissions").default([]),
   joinDate: timestamp("join_date", { withTimezone: true }),
+  dateOfLeaving: timestamp("date_of_leaving", { withTimezone: true }),
+  rehireDate: timestamp("rehire_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
@@ -119,7 +121,9 @@ export const departmentTimings = pgTable("department_timings", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
-});
+}, (table) => [
+  uniqueIndex("uq_department_timings_tenant_dept").on(table.tenantId, table.department)
+]);
 
 // ===================================================================
 // 6. QUOTATIONS

@@ -1,6 +1,38 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema.postgres";
+import dns from "dns";
+
+// Enterprise-grade resilient DNS resolver for cloud databases (e.g. Neon PostgreSQL on AWS)
+const customResolver = new dns.promises.Resolver();
+try {
+  customResolver.setServers(["8.8.8.8", "1.1.1.1", "8.8.4.4"]);
+  const origLookup = dns.lookup;
+  dns.lookup = ((hostname: string, options: any, callback: any) => {
+    if (typeof options === "function") {
+      callback = options;
+      options = {};
+    }
+    customResolver.resolve4(hostname).then(
+      (addresses) => {
+        if (addresses && addresses.length > 0) {
+          if (options && options.all) {
+            callback(null, addresses.map(a => ({ address: a, family: 4 })));
+          } else {
+            callback(null, addresses[0], 4);
+          }
+        } else {
+          origLookup(hostname, options, callback);
+        }
+      },
+      () => {
+        origLookup(hostname, options, callback);
+      }
+    );
+  }) as any;
+} catch (e) {
+  // Ignore if custom resolver configuration is disallowed
+}
 
 const { Pool } = pg;
 

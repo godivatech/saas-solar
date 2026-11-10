@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import 'dotenv/config';
 import { storage } from '../storage';
 import { pool } from '../db';
 import { AutoCheckoutService } from '../services/auto-checkout-service';
