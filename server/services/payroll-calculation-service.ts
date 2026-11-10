@@ -429,21 +429,24 @@ export class PayrollCalculationService {
     // Calculate statutory deductions using Settings
     // EPF Logic: Rate defaults to 12%, Ceiling defaults to 15000 (usually 1800 limit)
     const epfRate = (settings?.pfRate || 12) / 100;
-    const epfCeiling = settings?.pfApplicableFromSalary || 15000; // Salary limit for PF
+    const epfCeiling = settings?.pfApplicableFromSalary || settings?.epfCeiling || 15000; // Salary limit for PF
     const maxEpfDeduction = epfCeiling * epfRate; // e.g., 1800
 
     // LEGAL BUG FIX: EPF is calculated on FIXED BASIC, not Earned Basic
     // This ensures compliance even if employee takes leave
-    const epfBasis = fixedBasic > settings.epfCeiling ? settings.epfCeiling : fixedBasic;
+    const epfBasis = fixedBasic > epfCeiling ? epfCeiling : fixedBasic;
+    const epfEmployeeRate = Number(settings?.epfEmployeeRate) || Number(settings?.pfRate) || 12;
     const epfDeduction = salaryStructure.epfApplicable
-      ? Math.round(Math.min(epfBasis * (settings.epfEmployeeRate / 100), settings.epfCeiling * (settings.epfEmployeeRate / 100)))
+      ? Math.round(Math.min(epfBasis * (epfEmployeeRate / 100), maxEpfDeduction))
       : 0;
 
     // ESI Calculation (on Gross)
     // If Gross <= 21000, 0.75% for Employee
-    const esiEligible = grossSalary <= settings.esiThreshold;
+    const esiThreshold = Number(settings?.esiThreshold) || Number(settings?.esiApplicableFromSalary) || 21000;
+    const esiEmployeeRate = Number(settings?.esiEmployeeRate) || Number(settings?.esiRate) || 0.75;
+    const esiEligible = grossSalary <= esiThreshold;
     const esiDeduction = (salaryStructure.esiApplicable && esiEligible)
-      ? Math.ceil(grossSalary * (settings.esiEmployeeRate / 100))
+      ? Math.ceil(grossSalary * (esiEmployeeRate / 100))
       : 0;
 
     const vptDeduction = salaryStructure.vptAmount || 0;

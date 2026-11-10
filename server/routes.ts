@@ -4577,6 +4577,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/products", verifyAuth, async (req, res) => {
     try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || !["master_admin", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ message: "Access denied - Admin access required" });
+      }
       const product = await storage.createProduct(req.body);
       res.status(201).json(product);
     } catch (error) {
@@ -4587,6 +4591,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/products/:id", verifyAuth, async (req, res) => {
     try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || !["master_admin", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ message: "Access denied - Admin access required" });
+      }
       const product = await storage.updateProduct(req.params.id, req.body);
       res.json(product);
     } catch (error) {
@@ -4597,6 +4605,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/products/:id", verifyAuth, async (req, res) => {
     try {
+      const user = await storage.getUser(req.authenticatedUser?.uid || "");
+      if (!user || !["master_admin", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ message: "Access denied - Admin access required" });
+      }
       await storage.deleteProduct(req.params.id);
       res.status(204).end();
     } catch (error) {
