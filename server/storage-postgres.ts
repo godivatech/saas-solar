@@ -915,6 +915,21 @@ export class PostgresStorage implements IStorage {
   async createActivityLog(data: any): Promise<ActivityLog> {
     try {
       const tenantId = await this.getTenantId();
+
+      if (data.userId && data.userId !== 'system') {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const [row] = await pgDb.insert(pgActivityLogs).values({
         tenantId,
         type: data.type,
@@ -936,6 +951,9 @@ export class PostgresStorage implements IStorage {
         createdAt: row.createdAt
       };
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createActivityLog error, fallback:", e);
       return this.fallback.createActivityLog(data);
     }
@@ -4246,6 +4264,21 @@ export class PostgresStorage implements IStorage {
   async createAuditLog(data: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
+
+      if (data.userId && data.userId !== 'system') {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const [log] = await pgDb.insert(pgAuditLogs).values({
         tenantId,
         userId: data.userId || 'system',
@@ -4260,6 +4293,9 @@ export class PostgresStorage implements IStorage {
       try { await this.fallback.createAuditLog(data); } catch (_) { }
       return log;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createAuditLog error:", e);
       return this.fallback.createAuditLog(data);
     }
@@ -4268,6 +4304,21 @@ export class PostgresStorage implements IStorage {
   async getAuditLogs(filters?: { userId?: string; entityType?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
     try {
       const tenantId = await this.getTenantId();
+
+      if (filters?.userId) {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, filters.userId), eq(pgUsers.firebaseUid, filters.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          return [];
+        }
+      }
+
       const conditions: any[] = [eq(pgAuditLogs.tenantId, tenantId)];
       if (filters?.userId) conditions.push(eq(pgAuditLogs.userId, filters.userId));
       if (filters?.entityType) conditions.push(eq(pgAuditLogs.entityType, filters.entityType));

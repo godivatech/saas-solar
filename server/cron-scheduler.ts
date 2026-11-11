@@ -76,14 +76,12 @@ export function initializeCronJobs() {
 
     console.log('[CRON] ✅ Monthly leave reset job scheduled: 1st of every month at 12:10 AM');
 
-    // Optional: Run auto-checkout immediately on server start (for testing)
-    // Remove this in production if you don't want immediate execution
-    if (process.env.NODE_ENV === 'development') {
-        console.log('[CRON] Development mode: Running auto-checkout immediately for testing...');
-        AutoCheckoutService.processAutoCheckouts()
-            .then(() => console.log('[CRON] Initial auto-checkout check completed'))
-            .catch(error => console.error('[CRON] Initial auto-checkout check failed:', error));
-    }
+    // ✅ RELIABILITY FIX: Run auto-checkout catch-up check on server startup
+    // This catches up on any forgotten checkouts if the server was down or restarted
+    console.log('[CRON] Running auto-checkout startup check...');
+    AutoCheckoutService.processAutoCheckouts()
+        .then(() => console.log('[CRON] ✅ Startup auto-checkout check completed'))
+        .catch(error => console.error('[CRON] ⚠️ Startup auto-checkout check failed:', error));
 
     // ✅ RELIABILITY FIX: Run OT auto-close on server startup
     // This catches up on any forgotten sessions if the laptop/server was off

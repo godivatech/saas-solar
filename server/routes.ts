@@ -3462,7 +3462,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const customerData = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(customerData);
       res.status(201).json(customer);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -3492,7 +3495,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Customer not found" });
       }
       res.json(updatedCustomer);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -3509,7 +3515,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.deleteCustomer(req.params.id);
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting customer:", error);
       res.status(500).json({ message: "Failed to delete customer" });
     }
@@ -3716,7 +3725,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Invalidate caches if needed
       res.json(updatedQuotation);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           message: "Validation error",
@@ -3750,7 +3762,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Quotation not found" });
       }
       res.json(updatedQuotation);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -3767,7 +3782,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.deleteQuotation(req.params.id);
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting quotation:", error);
       res.status(500).json({ message: "Failed to delete quotation" });
     }
@@ -4175,7 +4193,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dataTransformations: mappingResult.dataTransformations
         }
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           message: "Quotation data validation failed",
@@ -4407,7 +4428,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const invoiceData = insertInvoiceSchema.parse(req.body);
       const invoice = await storage.createInvoice(invoiceData);
       res.status(201).json(invoice);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -4436,7 +4460,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Invoice not found" });
       }
       res.json(updatedInvoice);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -4453,7 +4480,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.deleteInvoice(req.params.id);
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting invoice:", error);
       res.status(500).json({ message: "Failed to delete invoice" });
     }
@@ -4485,7 +4515,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(result);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error recording invoice payment:", error);
       res.status(500).json({ message: (error as Error).message || "Failed to record payment" });
     }
@@ -4724,7 +4757,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(employee);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -4764,7 +4800,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(employee);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating employee:", error);
       res.status(500).json({ message: "Failed to update employee" });
     }
@@ -4797,7 +4836,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting employee:", error);
       res.status(500).json({ message: "Failed to delete employee" });
     }
@@ -6336,7 +6378,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(assignment);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -6418,7 +6463,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(override);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }

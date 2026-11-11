@@ -1173,9 +1173,11 @@ export class FirestoreStorage implements IStorage {
 
   // Activity logs implementation
   async createActivityLog(data: z.infer<typeof insertActivityLogSchema>): Promise<ActivityLog> {
+    const activeTenantId = getActiveTenantId();
     const id = this.db.collection("activity_logs").doc().id;
     const activityLog: ActivityLog = {
       id,
+      tenantId: (data as any).tenantId || activeTenantId,
       type: data.type,
       title: data.title,
       description: data.description,
@@ -1194,7 +1196,12 @@ export class FirestoreStorage implements IStorage {
   }
 
   async listActivityLogs(limit = 10): Promise<ActivityLog[]> {
-    const snapshot = await this.db.collection("activity_logs")
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection("activity_logs");
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query
       .orderBy("createdAt", "desc")
       .limit(limit)
       .get();
@@ -1203,14 +1210,16 @@ export class FirestoreStorage implements IStorage {
       return [];
     }
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || Date.now())
-      } as ActivityLog;
-    });
+    return snapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || Date.now())
+        } as ActivityLog;
+      })
+      .filter((log: any) => !activeTenantId || !log.tenantId || log.tenantId === activeTenantId);
   }
   async getUser(id: string): Promise<User | undefined> {
     const userDoc = this.db.collection("users").doc(id);
@@ -3878,10 +3887,12 @@ export class FirestoreStorage implements IStorage {
   // Audit logging
   async createAuditLog(data: z.infer<typeof insertAuditLogSchema>): Promise<AuditLog> {
     const validatedData = insertAuditLogSchema.parse(data);
+    const activeTenantId = getActiveTenantId();
     const auditDoc = this.db.collection("audit_logs").doc();
 
     const auditData = {
       ...validatedData,
+      tenantId: (validatedData as any).tenantId || activeTenantId,
       createdAt: Timestamp.now(),
     };
 
@@ -3897,7 +3908,13 @@ export class FirestoreStorage implements IStorage {
 
 
   async getAuditLogs(filters?: { userId?: string; entityType?: string; startDate?: Date; endDate?: Date }): Promise<AuditLog[]> {
-    let query = this.db.collection("audit_logs").orderBy("createdAt", "desc");
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection("audit_logs");
+
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    query = query.orderBy("createdAt", "desc");
 
     if (filters?.userId) {
       query = query.where("userId", "==", filters.userId);
@@ -3914,14 +3931,16 @@ export class FirestoreStorage implements IStorage {
 
     const snapshot = await query.limit(1000).get();
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data() || {};
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-      } as AuditLog;
-    });
+    return snapshot.docs
+      .map(doc => {
+        const data = doc.data() || {};
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+        } as AuditLog;
+      })
+      .filter((log: any) => !activeTenantId || !log.tenantId || log.tenantId === activeTenantId);
   }
 
   // ============================================
