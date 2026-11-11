@@ -92,6 +92,13 @@ export function initializeCronJobs() {
         .then(() => console.log('[CRON] ✅ Startup OT check completed - any forgotten sessions have been processed'))
         .catch(error => console.error('[CRON] ⚠️ Startup OT check failed:', error));
 
+    // ✅ RELIABILITY FIX: Run Site Visit auto-close on server startup
+    // This catches up on any forgotten site visits (> 24 hours) if the server was restarted
+    console.log('[CRON] Running Site Visit auto-close startup check...');
+    SiteVisitAutoCloseService.processAutoClose()
+        .then(() => console.log('[CRON] ✅ Startup Site Visit check completed'))
+        .catch(error => console.error('[CRON] ⚠️ Startup Site Visit check failed:', error));
+
     // ✅ RELIABILITY FIX: Catch-up check for monthly leave reset on server startup (IST-safe)
     const [, , startupDay] = getISTDateString(new Date()).split('-').map(Number);
     if (startupDay === 1) {

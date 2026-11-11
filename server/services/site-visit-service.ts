@@ -4,8 +4,8 @@
  */
 
 import { db as pgDb } from "../db";
-import { siteVisits as pgSiteVisits, tenants } from "@shared/schema.postgres";
-import { eq, ne, and, desc, gte, lte, sql } from "drizzle-orm";
+import { siteVisits as pgSiteVisits, tenants, users as pgUsers, customers as pgCustomers } from "@shared/schema.postgres";
+import { eq, ne, and, or, desc, gte, lte, sql } from "drizzle-orm";
 import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -132,6 +132,37 @@ export class SiteVisitService {
       const tenantId = await this.getTenantId((data as any).tenantId);
       const now = new Date();
 
+      // Ensure user belongs to this tenant
+      if (data.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
+      // Ensure customer (if specified) belongs to this tenant
+      const customerId = (data as any).customerId || (data.customer as any)?.id;
+      if (customerId) {
+        const [otherCust] = await pgDb
+          .select({ id: pgCustomers.id })
+          .from(pgCustomers)
+          .where(and(
+            eq(pgCustomers.id, customerId),
+            ne(pgCustomers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherCust) {
+          throw new Error("Unauthorized: Customer belongs to another tenant");
+        }
+      }
+
       const insertValues: any = {
         id,
         tenantId,
@@ -199,6 +230,9 @@ export class SiteVisitService {
 
       return this.convertPostgresToSiteVisit(created);
     } catch (error) {
+      if ((error as Error).message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('SITE_VISIT_SERVICE: Error creating site visit:', error);
       throw new Error(`Failed to create site visit: ${(error as Error).message}`);
     }
@@ -239,6 +273,38 @@ export class SiteVisitService {
       if (updates.autoCorrectionReason !== undefined) pgUpdates.autoCorrectionReason = updates.autoCorrectionReason;
 
       const resolvedTenantId = await this.getTenantId((updates as any).tenantId);
+
+      // Validate that updates.userId belongs to resolvedTenantId (if modified)
+      if (updates.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, updates.userId), eq(pgUsers.firebaseUid, updates.userId)),
+            ne(pgUsers.tenantId, resolvedTenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
+      // Validate that customer (if modified) belongs to resolvedTenantId
+      const updateCustomerId = (updates as any).customerId || (updates.customer as any)?.id;
+      if (updateCustomerId) {
+        const [otherCust] = await pgDb
+          .select({ id: pgCustomers.id })
+          .from(pgCustomers)
+          .where(and(
+            eq(pgCustomers.id, updateCustomerId),
+            ne(pgCustomers.tenantId, resolvedTenantId)
+          ))
+          .limit(1);
+        if (otherCust) {
+          throw new Error("Unauthorized: Customer belongs to another tenant");
+        }
+      }
+
       const [updated] = await pgDb
         .update(pgSiteVisits)
         .set(pgUpdates)
@@ -293,6 +359,9 @@ export class SiteVisitService {
 
       return this.convertPostgresToSiteVisit(updated);
     } catch (error) {
+      if ((error as Error).message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('SITE_VISIT_SERVICE: Error updating site visit:', error);
       throw new Error(`Failed to update site visit: ${(error as Error).message}`);
     }
@@ -707,6 +776,9 @@ export class SiteVisitService {
 
       return await this.updateSiteVisit(id, updateData);
     } catch (error) {
+      if ((error as Error).message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('Error in quick update:', error);
       throw new Error(`Failed to quick update site visit: ${(error as Error).message}`);
     }

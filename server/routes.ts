@@ -7876,7 +7876,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Site visit created successfully",
         siteVisit
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         console.error("Site visit validation errors:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({
@@ -7946,7 +7949,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Site visit updated successfully",
         siteVisit: updatedSiteVisit
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating site visit:", error);
       res.status(500).json({ message: "Failed to update site visit" });
     }
@@ -8240,7 +8246,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await siteVisitService.deleteSiteVisit(req.params.id);
 
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting site visit:", error);
       res.status(500).json({ message: "Failed to delete site visit" });
     }
@@ -8317,7 +8326,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: `Site visit ${validatedData.action === 'convert' ? 'converted' : validatedData.action === 'cancel' ? 'cancelled' : 'rescheduled'} successfully`
       });
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error in quick update site visit:", error);
       res.status(500).json({
         message: "Failed to update site visit",
@@ -8405,7 +8417,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Follow-up visit created successfully"
       });
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("FOLLOW_UP_CREATE: Error creating follow-up:", error);
       res.status(500).json({ message: "Failed to create follow-up visit" });
     }
@@ -8634,7 +8649,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Follow-up visit updated successfully",
         data: updatedFollowUp
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating follow-up visit:", error);
       res.status(500).json({ message: "Failed to update follow-up visit" });
     }
@@ -8719,7 +8737,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: updatedFollowUp,
         message: "Follow-up checkout completed successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error processing follow-up checkout:", error);
       res.status(500).json({ message: "Failed to checkout follow-up visit", error: (error as Error).message });
     }

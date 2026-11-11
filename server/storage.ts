@@ -5114,6 +5114,11 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -5223,10 +5228,12 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = (data as any).id || this.db.collection('performance_reviews').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       const reviewData = {
         ...data,
         id,
+        tenantId: (data as any).tenantId || activeTenantId,
         createdAt: now,
         updatedAt: now
       };
@@ -5241,6 +5248,9 @@ export class FirestoreStorage implements IStorage {
 
   async updatePerformanceReview(id: string, data: Partial<z.infer<typeof insertPerformanceReviewSchema>>): Promise<PerformanceReview> {
     try {
+      const existing = await this.getPerformanceReview(id);
+      if (!existing) throw new Error('Performance review not found');
+
       const updateData = {
         ...data,
         updatedAt: new Date()
@@ -5259,6 +5269,9 @@ export class FirestoreStorage implements IStorage {
 
   async deletePerformanceReview(id: string): Promise<boolean> {
     try {
+      const existing = await this.getPerformanceReview(id);
+      if (!existing) return false;
+
       await this.db.collection('performance_reviews').doc(id).delete();
       return true;
     } catch (error) {
