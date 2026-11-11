@@ -1181,6 +1181,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await userService.reactivateUser(req.params.id, user.uid);
       if (!result.success) {
         console.error(`[Reactivate API] Failed: ${result.error}`);
+        if (result.error && result.error.includes("Unauthorized")) {
+          return res.status(403).json({ message: result.error });
+        }
         return res.status(400).json({ message: result.error });
       }
 
@@ -1630,6 +1633,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await userService.deleteUser(uid);
 
       if (!result.success) {
+        if (result.error && result.error.includes("Unauthorized")) {
+          return res.status(403).json({ message: result.error });
+        }
         // Check for specific error message about reporting manager
         if (result.error && result.error.includes("reporting manager")) {
           return res.status(400).json({ message: result.error });
@@ -5771,7 +5777,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Manager approved leave ${req.params.id}, new status: ${updatedLeave.status}`);
 
       res.json(updatedLeave);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -5806,7 +5815,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedLeave = await storage.approveLeaveByHR(req.params.id, user.id, remarks);
 
       res.json(updatedLeave);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -5855,7 +5867,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedLeave = await storage.rejectLeave(req.params.id, user.id, reason, rejectedByRole);
 
       res.json(updatedLeave);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -5871,10 +5886,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      const leave = await storage.getLeaveApplication(req.params.id);
+      if (!leave) {
+        return res.status(404).json({ message: "Leave application not found" });
+      }
+
+      const isOwner = leave.userId === user.id || leave.userId === user.uid;
+      const isAdminOrHr = ["master_admin", "admin"].includes(user.role || "") || user.department === "hr";
+      if (!isOwner && !isAdminOrHr) {
+        return res.status(403).json({ message: "Access denied - You can only cancel your own leave applications" });
+      }
+
       const updatedLeave = await storage.cancelLeaveApplication(req.params.id, user.id);
 
       res.json(updatedLeave);
     } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error cancelling leave:", error);
       res.status(500).json({ message: error.message || "Failed to cancel leave" });
     }

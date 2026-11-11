@@ -1227,6 +1227,10 @@ export class FirestoreStorage implements IStorage {
     if (!docSnap.exists) return undefined;
     const data = docSnap.data();
 
+    if (this.activeTenantId && data?.tenantId && data.tenantId !== this.activeTenantId) {
+      return undefined;
+    }
+
     // Debug logging
     console.log(`[Storage.getUser] User ${id} employeeStatus from Firestore:`, data?.employeeStatus);
 
@@ -1257,7 +1261,8 @@ export class FirestoreStorage implements IStorage {
     const usersRef = this.db.collection("users");
     const snapshot = await usersRef.where("email", "==", email).get();
     if (snapshot.empty) return undefined;
-    const doc = snapshot.docs[0];
+    const doc = snapshot.docs.find(d => !this.activeTenantId || !d.data()?.tenantId || d.data()?.tenantId === this.activeTenantId);
+    if (!doc) return undefined;
     const data = doc.data();
     return {
       id: doc.id,
@@ -1278,7 +1283,10 @@ export class FirestoreStorage implements IStorage {
   async listUsers(): Promise<User[]> {
     const usersCollection = this.db.collection("users");
     const snapshot = await usersCollection.get();
-    return snapshot.docs.map((doc) => {
+    const activeTenantId = this.activeTenantId;
+    return snapshot.docs
+      .filter(doc => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc) => {
       const data = doc.data();
       // Handle different date formats safely
       let createdAt: Date;
@@ -1320,10 +1328,12 @@ export class FirestoreStorage implements IStorage {
   async createUser(data: z.infer<typeof insertUserSchema>): Promise<User> {
     const validatedData = insertUserSchema.parse(data);
     const userDoc = this.db.collection("users").doc(validatedData.uid);
+    const tenantId = (data as any).tenantId || this.activeTenantId || null;
 
     await userDoc.set({
       ...validatedData,
       id: validatedData.uid,
+      ...(tenantId ? { tenantId } : {}),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
@@ -1339,7 +1349,10 @@ export class FirestoreStorage implements IStorage {
   async getUsersByDepartment(department: string): Promise<User[]> {
     const usersCollection = this.db.collection("users");
     const snapshot = await usersCollection.where("department", "==", department).get();
-    return snapshot.docs.map((doc: any) => {
+    const activeTenantId = this.activeTenantId;
+    return snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -1367,7 +1380,10 @@ export class FirestoreStorage implements IStorage {
   async getUsersByDesignation(designation: string): Promise<User[]> {
     const usersCollection = this.db.collection("users");
     const snapshot = await usersCollection.where("designation", "==", designation).get();
-    return snapshot.docs.map((doc: any) => {
+    const activeTenantId = this.activeTenantId;
+    return snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -1395,7 +1411,10 @@ export class FirestoreStorage implements IStorage {
   async getUsersByReportingManager(managerId: string): Promise<User[]> {
     const usersCollection = this.db.collection("users");
     const snapshot = await usersCollection.where("reportingManagerId", "==", managerId).get();
-    return snapshot.docs.map((doc: any) => {
+    const activeTenantId = this.activeTenantId;
+    return snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -1422,6 +1441,13 @@ export class FirestoreStorage implements IStorage {
 
   async updateUser(id: string, data: Partial<User>): Promise<User> {
     const userDoc = this.db.collection("users").doc(id);
+    const existingSnap = await userDoc.get();
+    if (!existingSnap.exists) throw new Error("User not found");
+    const existingData = existingSnap.data() || {};
+    if (this.activeTenantId && existingData.tenantId && existingData.tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: User belongs to another tenant");
+    }
+
     const updateData: any = { ...data, updatedAt: Timestamp.now() };
 
     if (data.createdAt) {
@@ -2709,7 +2735,8 @@ export class FirestoreStorage implements IStorage {
 
     if (snapshot.empty) return undefined;
 
-    const doc = snapshot.docs[0];
+    const doc = snapshot.docs.find(d => !this.activeTenantId || !d.data()?.tenantId || d.data()?.tenantId === this.activeTenantId);
+    if (!doc) return undefined;
     const data = doc.data();
     return {
       id: doc.id,
@@ -2746,10 +2773,12 @@ export class FirestoreStorage implements IStorage {
   async createLeaveBalance(data: z.infer<typeof insertLeaveBalanceSchema>): Promise<LeaveBalance> {
     // Validate the input data
     const validatedData = insertLeaveBalanceSchema.parse(data);
+    const tenantId = (data as any).tenantId || this.activeTenantId || null;
 
     const balanceRef = this.db.collection("leave_balances").doc();
     const balanceData = {
       ...validatedData,
+      ...(tenantId ? { tenantId } : {}),
       casualLeaveHistory: validatedData.casualLeaveHistory.map(h => ({
         date: Timestamp.fromDate(h.date),
         days: h.days,
@@ -2778,6 +2807,13 @@ export class FirestoreStorage implements IStorage {
     const validatedData = insertLeaveBalanceSchema.partial().parse(data);
 
     const balanceDoc = this.db.collection("leave_balances").doc(id);
+    const existingDoc = await balanceDoc.get();
+    if (!existingDoc.exists) throw new Error("Leave balance not found");
+    const existingData = existingDoc.data() || {};
+    if (this.activeTenantId && existingData.tenantId && existingData.tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave balance belongs to another tenant");
+    }
+
     const updateData: any = {
       ...validatedData,
       updatedAt: Timestamp.now()
@@ -2838,7 +2874,9 @@ export class FirestoreStorage implements IStorage {
     const balanceRef = this.db.collection("leave_balances");
     const snapshot = await balanceRef.where("year", "==", year).get();
 
-    return snapshot.docs.map(doc => {
+    return snapshot.docs
+      .filter(doc => !this.activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === this.activeTenantId)
+      .map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -2873,6 +2911,9 @@ export class FirestoreStorage implements IStorage {
     for (const userDoc of usersSnapshot.docs) {
       const userId = userDoc.id;
       const userData = userDoc.data();
+      if (this.activeTenantId && userData.tenantId && userData.tenantId !== this.activeTenantId) {
+        continue;
+      }
 
       // Check if balance already exists for this month
       const existingBalance = await this.getLeaveBalance(userId, month, year);
@@ -2906,8 +2947,13 @@ export class FirestoreStorage implements IStorage {
     if (!docSnap.exists) return undefined;
 
     const data = docSnap.data() || {};
+    if (this.activeTenantId && data.tenantId && data.tenantId !== this.activeTenantId) {
+      return undefined;
+    }
+
     return {
       id: docSnap.id,
+      tenantId: data.tenantId,
       userId: data.userId,
       employeeId: data.employeeId,
       userName: data.userName,
@@ -2946,10 +2992,12 @@ export class FirestoreStorage implements IStorage {
   async createLeaveApplication(data: z.infer<typeof insertLeaveApplicationSchema>): Promise<LeaveApplication> {
     // Validate the input data
     const validatedData = insertLeaveApplicationSchema.parse(data);
+    const tenantId = (data as any).tenantId || this.activeTenantId || null;
 
     const leaveRef = this.db.collection("leave_applications").doc();
     const leaveData: any = {
       ...validatedData,
+      ...(tenantId ? { tenantId } : {}),
       startDate: validatedData.startDate ? Timestamp.fromDate(validatedData.startDate) : undefined,
       endDate: validatedData.endDate ? Timestamp.fromDate(validatedData.endDate) : undefined,
       permissionDate: validatedData.permissionDate ? Timestamp.fromDate(validatedData.permissionDate) : undefined,
@@ -2981,6 +3029,13 @@ export class FirestoreStorage implements IStorage {
     const validatedData = insertLeaveApplicationSchema.partial().parse(data);
 
     const leaveDoc = this.db.collection("leave_applications").doc(id);
+    const existingSnap = await leaveDoc.get();
+    if (!existingSnap.exists) throw new Error("Leave application not found");
+    const existingData = existingSnap.data() || {};
+    if (this.activeTenantId && existingData.tenantId && existingData.tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+
     const updateData: any = {
       ...validatedData,
       updatedAt: Timestamp.now()
@@ -3016,7 +3071,10 @@ export class FirestoreStorage implements IStorage {
       .orderBy("applicationDate", "desc")
       .get();
 
-    return snapshot.docs.map(doc => {
+    const activeTenantId = this.activeTenantId;
+    return snapshot.docs
+      .filter(doc => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -3065,8 +3123,11 @@ export class FirestoreStorage implements IStorage {
     }
 
     const snapshot = await query.orderBy("applicationDate", "desc").get();
+    const activeTenantId = this.activeTenantId;
 
-    return snapshot.docs.map((doc: any) => {
+    return snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -3115,8 +3176,11 @@ export class FirestoreStorage implements IStorage {
     }
 
     const snapshot = await query.orderBy("applicationDate", "desc").get();
+    const activeTenantId = this.activeTenantId;
 
-    return snapshot.docs.map((doc: any) => {
+    return snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -3165,8 +3229,11 @@ export class FirestoreStorage implements IStorage {
     }
 
     const snapshot = await query.orderBy("applicationDate", "desc").get();
+    const activeTenantId = this.activeTenantId;
 
-    let results = snapshot.docs.map((doc: any) => {
+    let results = snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -3223,9 +3290,15 @@ export class FirestoreStorage implements IStorage {
   async approveLeaveByManager(leaveId: string, managerId: string, remarks?: string): Promise<LeaveApplication> {
     const leave = await this.getLeaveApplication(leaveId);
     if (!leave) throw new Error("Leave application not found");
+    if (this.activeTenantId && (leave as any).tenantId && (leave as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
 
     const manager = await this.getUser(managerId);
     if (!manager) throw new Error("Manager not found");
+    if (this.activeTenantId && (manager as any).tenantId && (manager as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Approver belongs to another tenant");
+    }
 
     await this.updateLeaveApplication(leaveId, {
       status: "pending_hr",
@@ -3243,6 +3316,15 @@ export class FirestoreStorage implements IStorage {
   async approveLeaveByHR(leaveId: string, hrId: string, remarks?: string): Promise<LeaveApplication> {
     const leave = await this.getLeaveApplication(leaveId);
     if (!leave) throw new Error("Leave application not found");
+    if (this.activeTenantId && (leave as any).tenantId && (leave as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+
+    const hrUser = await this.getUser(hrId);
+    if (!hrUser) throw new Error("HR not found");
+    if (this.activeTenantId && (hrUser as any).tenantId && (hrUser as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: HR approver belongs to another tenant");
+    }
 
     // Get current leave balance
     const balance = await this.getCurrentLeaveBalance(leave.userId);
@@ -3296,6 +3378,18 @@ export class FirestoreStorage implements IStorage {
   }
 
   async rejectLeave(leaveId: string, rejectedBy: string, reason: string, rejectedByRole: 'manager' | 'hr'): Promise<LeaveApplication> {
+    const leave = await this.getLeaveApplication(leaveId);
+    if (!leave) throw new Error("Leave application not found");
+    if (this.activeTenantId && (leave as any).tenantId && (leave as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+
+    const user = await this.getUser(rejectedBy);
+    if (!user) throw new Error("User not found");
+    if (this.activeTenantId && (user as any).tenantId && (user as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: User belongs to another tenant");
+    }
+
     const status = rejectedByRole === 'manager' ? 'rejected_by_manager' : 'rejected_by_hr';
 
     await this.updateLeaveApplication(leaveId, {
@@ -3313,6 +3407,15 @@ export class FirestoreStorage implements IStorage {
   async cancelLeaveApplication(leaveId: string, userId: string): Promise<LeaveApplication> {
     const leave = await this.getLeaveApplication(leaveId);
     if (!leave) throw new Error("Leave application not found");
+    if (this.activeTenantId && (leave as any).tenantId && (leave as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+
+    const user = await this.getUser(userId);
+    if (!user) throw new Error("User not found");
+    if (this.activeTenantId && (user as any).tenantId && (user as any).tenantId !== this.activeTenantId) {
+      throw new Error("Unauthorized: User belongs to another tenant");
+    }
 
     if (leave.userId !== userId) {
       throw new Error("Unauthorized: You can only cancel your own leave applications");

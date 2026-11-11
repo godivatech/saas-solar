@@ -2879,6 +2879,19 @@ export class PostgresStorage implements IStorage {
   async approveLeaveByManager(leaveId: string, managerId: string, remarks?: string): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      if (managerId) {
+        const [foreignMgr] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, managerId), eq(pgUsers.firebaseUid, managerId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (foreignMgr) {
+          throw new Error("Unauthorized: Approver belongs to another tenant");
+        }
+      }
       const [updated] = await pgDb
         .update(pgLeaveApplications)
         .set({ status: "pending_hr", approvedBy: managerId, updatedAt: new Date() })
@@ -2919,6 +2932,19 @@ export class PostgresStorage implements IStorage {
   async approveLeaveByHR(leaveId: string, hrId: string, remarks?: string): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      if (hrId) {
+        const [foreignHr] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, hrId), eq(pgUsers.firebaseUid, hrId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (foreignHr) {
+          throw new Error("Unauthorized: HR approver belongs to another tenant");
+        }
+      }
       const updated = await pgDb.transaction(async (tx) => {
         // 1. Fetch leave application
         const [leave] = await tx
@@ -3064,6 +3090,19 @@ export class PostgresStorage implements IStorage {
   async rejectLeave(leaveId: string, rejectedBy: string, reason: string, rejectedByRole: 'manager' | 'hr'): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      if (rejectedBy) {
+        const [foreignUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, rejectedBy), eq(pgUsers.firebaseUid, rejectedBy)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (foreignUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
       const [updated] = await pgDb
         .update(pgLeaveApplications)
         .set({ status: "rejected", approvedBy: rejectedBy, rejectionReason: reason, updatedAt: new Date() })
@@ -3104,6 +3143,19 @@ export class PostgresStorage implements IStorage {
   async cancelLeaveApplication(leaveId: string, userId: string): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      if (userId) {
+        const [foreignUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (foreignUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
       const updated = await pgDb.transaction(async (tx) => {
         const [leave] = await tx
           .select()
