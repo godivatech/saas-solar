@@ -511,7 +511,7 @@ export class QuotationTemplateService {
   static generateQuotationNumber(): string {
     const now = new Date();
     const month = getISTDateString(now).split('-')[1];
-    const sequence = Math.floor(Math.random() * 9999) + 1000; // Random 4-digit number
+    const sequence = Math.floor(Math.random() * 9000) + 1000; // 4-digit number (1000-9999)
     return `Q-${month}-${sequence}`;
   }
 

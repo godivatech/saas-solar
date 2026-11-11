@@ -4955,12 +4955,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const review = await storage.createPerformanceReview(reviewData);
       res.status(201).json(review);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
       console.error("Error creating performance review:", error);
       res.status(500).json({ message: "Failed to create performance review" });
+    }
+  });
+
+  app.get("/api/performance-reviews/:id", verifyAuth, async (req, res) => {
+    try {
+      if (!req.authenticatedUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const hasPermission = req.authenticatedUser.permissions.includes("users.view") ||
+        req.authenticatedUser.user.role === "master_admin" ||
+        req.authenticatedUser.user.department === "hr";
+
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const review = await storage.getPerformanceReview(req.params.id);
+      if (!review) {
+        return res.status(404).json({ message: "Performance review not found" });
+      }
+      res.json(review);
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
+      console.error("Error fetching performance review:", error);
+      res.status(500).json({ message: "Failed to fetch performance review" });
     }
   });
 
@@ -4979,9 +5010,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const review = await storage.updatePerformanceReview(req.params.id, req.body);
       res.json(review);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating performance review:", error);
       res.status(500).json({ message: "Failed to update performance review" });
+    }
+  });
+
+  app.delete("/api/performance-reviews/:id", verifyAuth, async (req, res) => {
+    try {
+      if (!req.authenticatedUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const hasPermission = req.authenticatedUser.user.role === "master_admin" ||
+        req.authenticatedUser.user.department === "hr";
+
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const deleted = await storage.deletePerformanceReview(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Performance review not found" });
+      }
+      res.json({ success: true, message: "Performance review deleted" });
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
+      console.error("Error deleting performance review:", error);
+      res.status(500).json({ message: "Failed to delete performance review" });
     }
   });
 
