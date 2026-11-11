@@ -772,3 +772,22 @@ export const payrollFieldConfigs = pgTable("payroll_field_configs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
 });
+
+// ===================================================================
+// 27. PAYROLL SETTINGS (Enterprise Multi-Tenant Rules)
+// ===================================================================
+export const payrollSettings = pgTable("payroll_settings", {
+  id: varchar("id", { length: 128 }).primaryKey().default(sql`gen_random_uuid()::text`),
+  tenantId: varchar("tenant_id", { length: 128 }).references(() => tenants.id, { onDelete: "restrict" }).notNull().unique(),
+  pfRate: numeric("pf_rate", { precision: 5, scale: 2 }).default("12.00"),
+  esiRate: numeric("esi_rate", { precision: 5, scale: 2 }).default("1.75"),
+  tdsRate: numeric("tds_rate", { precision: 5, scale: 2 }).default("10.00"),
+  standardWorkingHours: numeric("standard_working_hours", { precision: 4, scale: 2 }).default("8.00"),
+  standardWorkingDays: integer("standard_working_days").default(26),
+  leaveDeductionRate: numeric("leave_deduction_rate", { precision: 5, scale: 2 }).default("1.00"),
+  pfApplicableFromSalary: numeric("pf_applicable_from_salary", { precision: 10, scale: 2 }).default("15000.00"),
+  esiApplicableFromSalary: numeric("esi_applicable_from_salary", { precision: 10, scale: 2 }).default("21000.00"),
+  autoCheckoutGraceMinutes: integer("auto_checkout_grace_minutes").default(5),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});

@@ -62,9 +62,10 @@ import {
   employeeDocuments as pgEmployeeDocuments,
   performanceReviews as pgPerformanceReviews,
   attendancePolicies as pgAttendancePolicies,
-  payrollFieldConfigs as pgPayrollFieldConfigs
+  payrollFieldConfigs as pgPayrollFieldConfigs,
+  payrollSettings as pgPayrollSettings
 } from "@shared/schema.postgres";
-import { eq, or, ilike, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, or, ilike, and, desc, sql, gte, lte, inArray, ne } from "drizzle-orm";
 import { getActiveTenantId } from "./tenant-context";
 
 /**
@@ -1593,10 +1594,11 @@ export class PostgresStorage implements IStorage {
   async getAttendanceByUserAndDate(userId: string, date: Date): Promise<Attendance | undefined> {
     try {
       const tenantId = await this.getTenantId();
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
+      const y = date.getUTCFullYear();
+      const m = date.getUTCMonth();
+      const d = date.getUTCDate();
+      const start = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
 
       const [att] = await pgDb
         .select()
@@ -1614,7 +1616,10 @@ export class PostgresStorage implements IStorage {
       const [userOtherTenant] = await pgDb
         .select({ id: pgUsers.id })
         .from(pgUsers)
-        .where(or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)))
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
         .limit(1);
       if (userOtherTenant) {
         return undefined;
@@ -1622,12 +1627,29 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getAttendanceByUserAndDate error:", e);
     }
-    return this.fallback.getAttendanceByUserAndDate(userId, date);
+    const fallbackAtt = await this.fallback.getAttendanceByUserAndDate(userId, date);
+    if (fallbackAtt && (fallbackAtt as any).tenantId && (fallbackAtt as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackAtt;
   }
 
   async listAttendanceByUser(userId: string): Promise<Attendance[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if user belongs to another tenant
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb
         .select()
         .from(pgAttendance)
@@ -1641,7 +1663,7 @@ export class PostgresStorage implements IStorage {
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
       console.error("[PostgresStorage] listAttendanceByUser error:", e);
-      return this.fallback.listAttendanceByUser(userId);
+      return [];
     }
   }
 
@@ -1759,16 +1781,40 @@ export class PostgresStorage implements IStorage {
   }
 
   async getUserAttendanceForDate(userId: string, date: string): Promise<Attendance | undefined> {
-    return this.getAttendanceByUserAndDate(userId, new Date(date));
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00.000Z`) : new Date(date);
+    return this.getAttendanceByUserAndDate(userId, d);
   }
 
   async listAttendance(filters: { userId?: string; startDate?: string; endDate?: string; status?: string; adminReviewStatus?: string } = {}): Promise<any[]> {
     try {
       const tenantId = await this.getTenantId();
       const conditions: any[] = [eq(pgAttendance.tenantId, tenantId)];
-      if (filters.userId) conditions.push(eq(pgAttendance.userId, filters.userId));
-      if (filters.startDate) conditions.push(gte(pgAttendance.date, new Date(filters.startDate)));
-      if (filters.endDate) conditions.push(lte(pgAttendance.date, new Date(filters.endDate)));
+      if (filters.userId) {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, filters.userId), eq(pgUsers.firebaseUid, filters.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          return [];
+        }
+        conditions.push(eq(pgAttendance.userId, filters.userId));
+      }
+      if (filters.startDate) {
+        const s = /^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)
+          ? new Date(`${filters.startDate}T00:00:00.000Z`)
+          : new Date(filters.startDate);
+        conditions.push(gte(pgAttendance.date, s));
+      }
+      if (filters.endDate) {
+        const e = /^\d{4}-\d{2}-\d{2}$/.test(filters.endDate)
+          ? new Date(`${filters.endDate}T23:59:59.999Z`)
+          : new Date(filters.endDate);
+        conditions.push(lte(pgAttendance.date, e));
+      }
       if (filters.status) conditions.push(eq(pgAttendance.status, filters.status));
       if (filters.adminReviewStatus) conditions.push(eq(pgAttendance.adminReviewStatus, filters.adminReviewStatus));
 
@@ -1781,7 +1827,8 @@ export class PostgresStorage implements IStorage {
       return rows.map(r => this.mapAttendance(r));
     } catch (e) {
       console.error("[PostgresStorage] listAttendance error, delegating:", e);
-      return (this.fallback as any).listAttendance ? (this.fallback as any).listAttendance(filters) : [];
+      const fallbackRecords = (this.fallback as any).listAttendance ? await (this.fallback as any).listAttendance(filters) : [];
+      return fallbackRecords.filter((r: any) => !r.tenantId || r.tenantId === tenantId);
     }
   }
 
@@ -3304,18 +3351,19 @@ async getLeave(id: string): Promise<any | undefined> {
     overtimeHours: number;
     leaveDays: number;
   }> {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
+    const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const attendanceRecords = await this.listAttendance({
       userId,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0]
+      startDate: startStr,
+      endDate: endStr
     });
 
     let workingDays = 0;
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
+    for (let day = 1; day <= lastDay; day++) {
+      const dayOfWeek = new Date(year, month - 1, day).getDay();
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         workingDays++;
       }
@@ -4111,27 +4159,109 @@ async getLeave(id: string): Promise<any | undefined> {
   }
 
   async getPayrollSettings(): Promise<any | undefined> {
-    return {
-      id: "default-payroll-settings",
-      pfRate: 12,
-      esiRate: 1.75,
-      tdsRate: 10,
-      standardWorkingHours: 8,
-      standardWorkingDays: 26,
-      leaveDeductionRate: 1,
-      pfApplicableFromSalary: 15000,
-      esiApplicableFromSalary: 21000,
-      autoCheckoutGraceMinutes: 5,
-      updatedAt: new Date()
-    };
+    try {
+      const tenantId = await this.getTenantId();
+      const [ps] = await pgDb
+        .select()
+        .from(pgPayrollSettings)
+        .where(eq(pgPayrollSettings.tenantId, tenantId))
+        .limit(1);
+
+      if (ps) {
+        return {
+          id: ps.id,
+          tenantId: ps.tenantId,
+          pfRate: Number(ps.pfRate) || 12,
+          esiRate: Number(ps.esiRate) || 1.75,
+          tdsRate: Number(ps.tdsRate) || 10,
+          standardWorkingHours: Number(ps.standardWorkingHours) || 8,
+          standardWorkingDays: Number(ps.standardWorkingDays) || 26,
+          leaveDeductionRate: Number(ps.leaveDeductionRate) || 1,
+          pfApplicableFromSalary: Number(ps.pfApplicableFromSalary) || 15000,
+          esiApplicableFromSalary: Number(ps.esiApplicableFromSalary) || 21000,
+          autoCheckoutGraceMinutes: Number(ps.autoCheckoutGraceMinutes) || 5,
+          updatedAt: ps.updatedAt
+        };
+      }
+
+      // Auto-seed default payroll settings for this tenant
+      const [newPs] = await pgDb
+        .insert(pgPayrollSettings)
+        .values({
+          tenantId
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (newPs) {
+        return {
+          id: newPs.id,
+          tenantId: newPs.tenantId,
+          pfRate: Number(newPs.pfRate) || 12,
+          esiRate: Number(newPs.esiRate) || 1.75,
+          tdsRate: Number(newPs.tdsRate) || 10,
+          standardWorkingHours: Number(newPs.standardWorkingHours) || 8,
+          standardWorkingDays: Number(newPs.standardWorkingDays) || 26,
+          leaveDeductionRate: Number(newPs.leaveDeductionRate) || 1,
+          pfApplicableFromSalary: Number(newPs.pfApplicableFromSalary) || 15000,
+          esiApplicableFromSalary: Number(newPs.esiApplicableFromSalary) || 21000,
+          autoCheckoutGraceMinutes: Number(newPs.autoCheckoutGraceMinutes) || 5,
+          updatedAt: newPs.updatedAt
+        };
+      }
+    } catch (e) {
+      console.error("[PostgresStorage] getPayrollSettings error:", e);
+    }
+    return this.fallback.getPayrollSettings();
   }
 
   async updatePayrollSettings(data: any): Promise<any> {
-    return {
-      id: "default-payroll-settings",
-      ...data,
-      updatedAt: new Date()
-    };
+    try {
+      const tenantId = await this.getTenantId();
+      const updateValues: any = { updatedAt: new Date() };
+      if (data.pfRate !== undefined) updateValues.pfRate = String(data.pfRate);
+      if (data.esiRate !== undefined) updateValues.esiRate = String(data.esiRate);
+      if (data.tdsRate !== undefined) updateValues.tdsRate = String(data.tdsRate);
+      if (data.standardWorkingHours !== undefined) updateValues.standardWorkingHours = String(data.standardWorkingHours);
+      if (data.standardWorkingDays !== undefined) updateValues.standardWorkingDays = Number(data.standardWorkingDays);
+      if (data.leaveDeductionRate !== undefined) updateValues.leaveDeductionRate = String(data.leaveDeductionRate);
+      if (data.pfApplicableFromSalary !== undefined) updateValues.pfApplicableFromSalary = String(data.pfApplicableFromSalary);
+      if (data.esiApplicableFromSalary !== undefined) updateValues.esiApplicableFromSalary = String(data.esiApplicableFromSalary);
+      if (data.autoCheckoutGraceMinutes !== undefined) updateValues.autoCheckoutGraceMinutes = Number(data.autoCheckoutGraceMinutes);
+
+      const [updated] = await pgDb
+        .insert(pgPayrollSettings)
+        .values({
+          tenantId,
+          ...updateValues
+        })
+        .onConflictDoUpdate({
+          target: pgPayrollSettings.tenantId,
+          set: updateValues
+        })
+        .returning();
+
+      if (updated) {
+        try { await this.fallback.updatePayrollSettings(data); } catch (_) {}
+        return {
+          id: updated.id,
+          tenantId: updated.tenantId,
+          pfRate: Number(updated.pfRate) || 12,
+          esiRate: Number(updated.esiRate) || 1.75,
+          tdsRate: Number(updated.tdsRate) || 10,
+          standardWorkingHours: Number(updated.standardWorkingHours) || 8,
+          standardWorkingDays: Number(updated.standardWorkingDays) || 26,
+          leaveDeductionRate: Number(updated.leaveDeductionRate) || 1,
+          pfApplicableFromSalary: Number(updated.pfApplicableFromSalary) || 15000,
+          esiApplicableFromSalary: Number(updated.esiApplicableFromSalary) || 21000,
+          autoCheckoutGraceMinutes: Number(updated.autoCheckoutGraceMinutes) || 5,
+          updatedAt: updated.updatedAt
+        };
+      }
+    } catch (e) {
+      console.error("[PostgresStorage] updatePayrollSettings error:", e);
+    }
+    return this.fallback.updatePayrollSettings(data);
   }
 
   // ===================================================================

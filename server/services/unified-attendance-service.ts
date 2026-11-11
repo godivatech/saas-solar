@@ -8,7 +8,7 @@ import { CloudinaryService } from './cloudinary-service';
 import { EnterpriseTimeService } from './enterprise-time-service';
 import { LeaveService } from './leave-service';
 import { HolidayService } from './holiday-service';
-import { getUTCMidnight, isSameUTCDate } from '../utils/timezone-helpers';
+import { getUTCMidnight, isSameUTCDate, getISTTodayAsUTC } from '../utils/timezone-helpers';
 
 export interface AttendanceCheckInRequest {
   userId: string;
@@ -504,12 +504,7 @@ export class UnifiedAttendanceService {
         };
       }
 
-      const today = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0, 0, 0, 0
-      ));
+      const today = getISTTodayAsUTC();
 
       console.log('CHECK-IN: Using UTC date for consistency:', {
         serverTime: now.toISOString(),

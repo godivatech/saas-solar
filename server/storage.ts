@@ -4515,20 +4515,21 @@ export class FirestoreStorage implements IStorage {
     overtimeHours: number;
     leaveDays: number;
   }> {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
+    const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     // Get attendance records for the month
     const attendanceRecords = await this.listAttendance({
       userId,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0]
+      startDate: startStr,
+      endDate: endStr
     });
 
     // Calculate working days (excluding weekends)
     let workingDays = 0;
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
+    for (let day = 1; day <= lastDay; day++) {
+      const dayOfWeek = new Date(year, month - 1, day).getDay();
       if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday or Saturday
         workingDays++;
       }

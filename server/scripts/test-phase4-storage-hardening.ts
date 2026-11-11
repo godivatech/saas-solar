@@ -322,3 +322,4 @@ runPhase4Tests().catch(err => {
   console.error("❌ Phase 4 tests failed:", err);
   process.exit(1);
 });
+

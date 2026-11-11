@@ -5,6 +5,7 @@
 
 import { performanceOptimizer } from './performance-optimizer';
 import { getActiveTenantId } from '../tenant-context';
+import { getISTDateString } from '../utils/timezone-helpers';
 
 interface AttendanceCacheConfig {
   userAttendanceToday: number;      // 30 seconds
@@ -148,7 +149,7 @@ export class AttendanceCacheService {
 
   // Live attendance with minimal caching
   static async getLiveAttendance(queryFn: () => Promise<any>): Promise<any> {
-    const cacheKey = `${this.getTenantPrefix()}attendance:live:${new Date().toISOString().split('T')[0]}`;
+    const cacheKey = `${this.getTenantPrefix()}attendance:live:${getISTDateString(new Date())}`;
     return performanceOptimizer.executeOptimizedQuery(
       cacheKey,
       queryFn,

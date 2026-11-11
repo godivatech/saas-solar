@@ -58,7 +58,7 @@ import { LeaveService } from './services/leave-service';
 import { LeaveBalanceService } from './services/leave-balance-service';
 import { HolidayService } from './services/holiday-service';
 import { AdvancedQuotationService } from './services/quotation-service';
-import { getUTCMidnight, getUTCEndOfDay } from './utils/timezone-helpers';
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTTodayAsUTC } from './utils/timezone-helpers';
 
 /**
  * Helper function to merge a date with a time string
@@ -2314,16 +2314,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // CRITICAL FIX: Use UTC midnight to match UnifiedAttendanceService storage format
-      // Local time setHours(0,0,0,0) creates mismatched timestamps in IST (+5:30)
+      // CRITICAL FIX: Use IST-aligned UTC midnight to match UnifiedAttendanceService storage format
       const now = new Date();
-
-      const today = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0, 0, 0, 0
-      ));
+      const today = getISTTodayAsUTC();
 
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -6739,9 +6732,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      // Use server timezone for consistent date handling
+      // Use Indian Standard Time (Asia/Kolkata) date for consistent attendance handling
       const serverDate = new Date();
-      const dateString = serverDate.toISOString().split('T')[0];
+      const dateString = getISTDateString(serverDate);
 
       console.log('API /api/attendance/today - Query params:', { userId, serverDate, dateString });
 

@@ -14,3 +14,4 @@ async function checkColumns() {
 }
 
 checkColumns().catch(console.error);
+
