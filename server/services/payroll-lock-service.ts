@@ -65,7 +65,7 @@ export class PayrollLockService {
             };
 
             if (period) {
-                await storage.updatePayrollPeriod(periodId, periodData);
+                await storage.updatePayrollPeriod(period.id || periodId, periodData);
             } else {
                 await storage.createPayrollPeriod(periodData);
             }

@@ -1153,6 +1153,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await userService.updateUserProfile(req.params.id, req.body);
       if (!result.success) {
+        if (result.error?.includes("Unauthorized")) {
+          return res.status(403).json({ message: result.error });
+        }
         return res.status(400).json({ message: result.error });
       }
 
@@ -5935,7 +5938,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const holiday = await storage.createFixedHoliday(holidayData);
       res.status(201).json({ success: true, holiday, message: "Holiday created successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ success: false, message: error.message });
+      }
       if (error instanceof z.ZodError) {
         console.error("[Holiday Creation] Validation error:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ success: false, errors: error.errors, message: "Validation failed" });
@@ -5983,7 +5989,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const holiday = await storage.updateFixedHoliday(req.params.id, updateData);
       res.json({ success: true, holiday, message: "Holiday updated successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ success: false, message: error.message });
+      }
       if (error instanceof z.ZodError) {
         console.error("[Holiday Update] Validation error:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ success: false, errors: error.errors, message: "Validation failed" });
@@ -6002,7 +6011,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.deleteFixedHoliday(req.params.id);
       res.json({ success: true, message: "Holiday deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ success: false, message: error.message });
+      }
       console.error("Error deleting holiday:", error);
       res.status(500).json({ success: false, message: "Failed to delete holiday" });
     }

@@ -117,11 +117,11 @@ export class HolidayService {
                 id: actualId
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating holiday:', error);
             return {
                 success: false,
-                message: 'Failed to create holiday'
+                message: error.message || 'Failed to create holiday'
             };
         }
     }
@@ -205,11 +205,11 @@ export class HolidayService {
                 message: 'Holiday deleted successfully'
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error deleting holiday:', error);
             return {
                 success: false,
-                message: 'Failed to delete holiday'
+                message: error.message || 'Failed to delete holiday'
             };
         }
     }

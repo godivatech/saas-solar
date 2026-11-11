@@ -291,6 +291,21 @@ export class PostgresStorage implements IStorage {
   async createUser(data: any): Promise<User> {
     try {
       const tenantId = await this.getTenantId();
+
+      if (data.reportingManagerId) {
+        const [mgrOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.reportingManagerId), eq(pgUsers.firebaseUid, data.reportingManagerId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (mgrOtherTenant) {
+          throw new Error("Unauthorized: Reporting manager belongs to another tenant");
+        }
+      }
+
       const insertValues: any = {
         tenantId,
         firebaseUid: data.uid || data.firebaseUid || (data.id ? data.id : `user_${Date.now()}`),
@@ -328,6 +343,9 @@ export class PostgresStorage implements IStorage {
 
       return this.mapUser(u);
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createUser error, delegating:", e);
       return this.fallback.createUser(data);
     }
@@ -335,6 +353,23 @@ export class PostgresStorage implements IStorage {
 
   async updateUser(id: string, data: any): Promise<User> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const tenantId = activeTenantId || await this.getTenantId();
+
+      if (data.reportingManagerId) {
+        const [mgrOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.reportingManagerId), eq(pgUsers.firebaseUid, data.reportingManagerId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (mgrOtherTenant) {
+          throw new Error("Unauthorized: Reporting manager belongs to another tenant");
+        }
+      }
+
       const updateValues: any = { updatedAt: new Date() };
       if (data.displayName !== undefined) updateValues.displayName = data.displayName;
       if (data.email !== undefined) updateValues.email = data.email;
@@ -366,7 +401,6 @@ export class PostgresStorage implements IStorage {
       if (data.employeeStatus !== undefined) updateValues.employeeStatus = data.employeeStatus;
       if (data.permissions !== undefined) updateValues.permissions = data.permissions;
 
-      const activeTenantId = getActiveTenantId();
       const whereCondition = activeTenantId
         ? and(
           or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)),
@@ -398,6 +432,9 @@ export class PostgresStorage implements IStorage {
         }
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] updateUser error, delegating:", e);
       throw e;
     }
