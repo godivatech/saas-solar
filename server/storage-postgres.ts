@@ -1971,14 +1971,19 @@ export class PostgresStorage implements IStorage {
   async listAttendanceBetweenDates(startDate: Date, endDate: Date): Promise<Attendance[]> {
     try {
       const tenantId = await this.getTenantId();
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      if (e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0 && e.getMilliseconds() === 0) {
+        e.setHours(23, 59, 59, 999);
+      }
       const rows = await pgDb
         .select()
         .from(pgAttendance)
         .where(
           and(
             eq(pgAttendance.tenantId, tenantId),
-            gte(pgAttendance.date, startDate),
-            lte(pgAttendance.date, endDate)
+            gte(pgAttendance.date, s),
+            lte(pgAttendance.date, e)
           )
         )
         .orderBy(desc(pgAttendance.date));
@@ -1992,14 +1997,32 @@ export class PostgresStorage implements IStorage {
   async listAttendanceByUserBetweenDates(userId: string, startDate: Date, endDate: Date): Promise<Attendance[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if user belongs to another tenant
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      if (e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0 && e.getMilliseconds() === 0) {
+        e.setHours(23, 59, 59, 999);
+      }
       const rows = await pgDb
         .select()
         .from(pgAttendance)
         .where(and(
           eq(pgAttendance.tenantId, tenantId),
           eq(pgAttendance.userId, userId),
-          gte(pgAttendance.date, startDate),
-          lte(pgAttendance.date, endDate)
+          gte(pgAttendance.date, s),
+          lte(pgAttendance.date, e)
         ))
         .orderBy(desc(pgAttendance.date));
       return rows.map(r => this.mapAttendance(r));

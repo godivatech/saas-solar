@@ -662,9 +662,9 @@ export class OTSessionService {
      */
     static async lockSessionsForPeriod(month: number, year: number, adminId: string): Promise<void> {
         try {
-            // Get all attendance records for the month
-            const startDate = new Date(year, month - 1, 1);
-            const endDate = new Date(year, month, 0);
+            // Get all attendance records for the month (covering the entire final day)
+            const startDate = new Date(year, month - 1, 1, 0, 0, 0, 0);
+            const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
             const attendanceRecords = await storage.listAttendanceByDateRange(startDate, endDate);
 
