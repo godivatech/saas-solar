@@ -1727,11 +1727,10 @@ export class PostgresStorage implements IStorage {
   async getAttendanceByUserAndDate(userId: string, date: Date): Promise<Attendance | undefined> {
     try {
       const tenantId = await this.getTenantId();
-      const y = date.getUTCFullYear();
-      const m = date.getUTCMonth();
-      const d = date.getUTCDate();
-      const start = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
-      const end = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+      const istStr = getISTDateString(date);
+      const [y, m, d] = istStr.split('-').map(Number);
+      const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
 
       const [att] = await pgDb
         .select()
@@ -1829,6 +1828,20 @@ export class PostgresStorage implements IStorage {
   async createAttendance(data: any): Promise<Attendance> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const attDate = data.date instanceof Date ? data.date : new Date(data.date);
       const [row] = await pgDb.insert(pgAttendance).values({
         tenantId,
@@ -1854,6 +1867,9 @@ export class PostgresStorage implements IStorage {
       try { await this.fallback.createAttendance(data); } catch (_) {}
       return this.mapAttendance(row);
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createAttendance error, fallback:", e);
       return this.fallback.createAttendance(data);
     }
@@ -2275,9 +2291,24 @@ export class PostgresStorage implements IStorage {
   async createLeaveBalance(data: any): Promise<LeaveBalance> {
     try {
       const tenantId = await this.getTenantId();
+      const targetUserId = data.userId || data.employeeId;
+      if (targetUserId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, targetUserId), eq(pgUsers.firebaseUid, targetUserId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const [lb] = await pgDb.insert(pgLeaveBalances).values({
         tenantId,
-        userId: data.userId || data.employeeId,
+        userId: targetUserId,
         year: Number(data.year),
         month: Number(data.month),
         casualLeaveBalance: String(data.casualLeaveBalance ?? 1),
@@ -2299,6 +2330,9 @@ export class PostgresStorage implements IStorage {
         permissionHoursUsed: lb.permissionHoursUsed
       } as unknown) as LeaveBalance;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createLeaveBalance error:", e);
       return this.fallback.createLeaveBalance(data);
     }
@@ -2328,7 +2362,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantLb] = await pgDb
           .select({ id: pgLeaveBalances.id })
           .from(pgLeaveBalances)
-          .where(eq(pgLeaveBalances.id, id))
+          .where(and(eq(pgLeaveBalances.id, id), ne(pgLeaveBalances.tenantId, tenantId)))
           .limit(1);
         if (otherTenantLb) {
           throw new Error("Unauthorized: Leave balance belongs to another tenant");
@@ -2352,6 +2386,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updateLeaveBalance error:", e);
+    }
+    const fallbackLb = (this.fallback as any)?.getLeaveBalanceById ? await (this.fallback as any).getLeaveBalanceById(id) : undefined;
+    if (fallbackLb && (fallbackLb as any).tenantId && (fallbackLb as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave balance belongs to another tenant");
     }
     return this.fallback.updateLeaveBalance(id, data);
   }
@@ -2468,6 +2506,20 @@ export class PostgresStorage implements IStorage {
   async createLeaveApplication(data: any): Promise<LeaveApplication> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const totalDaysVal = data.totalDays !== undefined && data.totalDays !== null ? String(data.totalDays) : null;
       const daysCountVal = data.daysCount !== undefined && data.daysCount !== null ? String(data.daysCount) : totalDaysVal;
 
@@ -2501,6 +2553,9 @@ export class PostgresStorage implements IStorage {
       try { await this.fallback.createLeaveApplication(fallbackData); } catch (_) {}
       return this.mapLeaveApp(app);
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createLeaveApplication error:", e);
       return this.fallback.createLeaveApplication(data);
     }
@@ -3147,6 +3202,20 @@ async getLeave(id: string): Promise<any | undefined> {
   async createSalaryAdvance(data: any): Promise<SalaryAdvance> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const now = new Date();
       const amountVal = String(data.amount || data.requestAmount || 0);
       const monthlyDeduct = String(data.monthlyDeduction || data.monthlyEmiAmount || 0);
@@ -3174,6 +3243,9 @@ async getLeave(id: string): Promise<any | undefined> {
       try { await this.fallback.createSalaryAdvance(data); } catch (_) {}
       return this.mapSalaryAdvance(adv);
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createSalaryAdvance error:", e);
       return this.fallback.createSalaryAdvance(data);
     }
@@ -4282,6 +4354,20 @@ async getLeave(id: string): Promise<any | undefined> {
   async createSalaryStructure(data: any): Promise<SalaryStructure> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.userId) {
+        const [otherUser] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherUser) {
+          throw new Error("Unauthorized: User belongs to another tenant");
+        }
+      }
+
       const baseSalary = data.baseSalary ?? data.basicSalary ?? 0;
       const monthlyGross = data.monthlyGross ?? data.fixedSalary ?? data.grossSalary ?? baseSalary;
       const monthlyNet = data.monthlyNet ?? monthlyGross;
@@ -4333,6 +4419,9 @@ async getLeave(id: string): Promise<any | undefined> {
         updatedAt: s.updatedAt
       } as any;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createSalaryStructure error:", e);
       return this.fallback.createSalaryStructure(data);
     }
@@ -7545,6 +7634,20 @@ async getLeave(id: string): Promise<any | undefined> {
   async createDepartment(data: any): Promise<Department> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.managerId) {
+        const [otherMgr] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.managerId), eq(pgUsers.firebaseUid, data.managerId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherMgr) {
+          throw new Error("Unauthorized: Manager belongs to another tenant");
+        }
+      }
+
       const [created] = await pgDb.insert(pgDepartments).values({
         tenantId,
         name: data.name,
@@ -7566,6 +7669,9 @@ async getLeave(id: string): Promise<any | undefined> {
         updatedAt: created.updatedAt || new Date()
       } as Department;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createDepartment error:", e);
       return (this.fallback as any)?.createDepartment ? (this.fallback as any).createDepartment(data) : undefined;
     }
@@ -7574,11 +7680,25 @@ async getLeave(id: string): Promise<any | undefined> {
   async updateDepartment(id: string, data: any): Promise<Department> {
     try {
       const tenantId = await this.getTenantId();
+      if (data.managerId !== undefined && data.managerId) {
+        const [otherMgr] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.managerId), eq(pgUsers.firebaseUid, data.managerId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherMgr) {
+          throw new Error("Unauthorized: Manager belongs to another tenant");
+        }
+      }
+
       const updateValues: any = { updatedAt: new Date() };
       if (data.name !== undefined) updateValues.name = data.name;
       if (data.code !== undefined) updateValues.code = data.code;
       if (data.description !== undefined) updateValues.description = data.description;
-      if (data.managerId !== undefined) updateValues.managerId = data.managerId;
+      if (data.managerId !== undefined) updateValues.managerId = data.managerId || null;
       if (data.isActive !== undefined) updateValues.isActive = data.isActive;
 
       const [updated] = await pgDb.update(pgDepartments)

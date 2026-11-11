@@ -5,7 +5,7 @@
 
 import { db as pgDb } from "../db";
 import { followUpVisits as pgFollowUpVisits, siteVisits as pgSiteVisits, tenants } from "@shared/schema.postgres";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
 import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -114,10 +114,19 @@ export class FollowUpService {
   async createFollowUp(data: InsertFollowUpSiteVisit): Promise<FollowUpSiteVisit> {
     try {
       const validatedData = insertFollowUpSiteVisitSchema.parse(data);
+      const tenantId = await this.getTenantId((data as any).tenantId);
 
-      // Check original visit (PostgreSQL first)
-      const originalVisit = await siteVisitService.getSiteVisitById(validatedData.originalVisitId);
+      // Check original visit (PostgreSQL first with explicit tenant boundary)
+      const originalVisit = await siteVisitService.getSiteVisitById(validatedData.originalVisitId, tenantId);
       if (!originalVisit) {
+        const [otherTenantVisit] = await pgDb
+          .select({ id: pgSiteVisits.id })
+          .from(pgSiteVisits)
+          .where(and(eq(pgSiteVisits.id, validatedData.originalVisitId), ne(pgSiteVisits.tenantId, tenantId)))
+          .limit(1);
+        if (otherTenantVisit) {
+          throw new Error("Unauthorized: Original site visit belongs to another tenant");
+        }
         throw new Error(`Original visit ${validatedData.originalVisitId} not found`);
       }
 
@@ -127,7 +136,6 @@ export class FollowUpService {
       }
 
       const id = crypto.randomUUID();
-      const tenantId = await this.getTenantId((data as any).tenantId);
       const now = new Date();
 
       const insertValues: any = {
@@ -202,6 +210,9 @@ export class FollowUpService {
 
       return this.convertPostgresToFollowUp(created);
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('FOLLOW_UP_SERVICE: Error creating follow-up:', error);
       throw new Error(`Failed to create follow-up visit: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -251,6 +262,14 @@ export class FollowUpService {
         .returning();
 
       if (!updated) {
+        const [otherFollowUp] = await pgDb
+          .select({ id: pgFollowUpVisits.id })
+          .from(pgFollowUpVisits)
+          .where(and(eq(pgFollowUpVisits.id, id), ne(pgFollowUpVisits.tenantId, resolvedTenantId)))
+          .limit(1);
+        if (otherFollowUp) {
+          throw new Error("Unauthorized: Follow-up visit belongs to another tenant");
+        }
         throw new Error(`Follow-up ${id} not found`);
       }
 
@@ -294,6 +313,9 @@ export class FollowUpService {
 
       return this.convertPostgresToFollowUp(updated);
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error('FOLLOW_UP_SERVICE: Error updating follow-up:', error);
       throw new Error(`Failed to update follow-up visit: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -319,6 +341,15 @@ export class FollowUpService {
         return this.convertPostgresToFollowUp(v);
       }
 
+      const [otherFollowUp] = await pgDb
+        .select({ id: pgFollowUpVisits.id })
+        .from(pgFollowUpVisits)
+        .where(and(eq(pgFollowUpVisits.id, id), ne(pgFollowUpVisits.tenantId, resolvedTenantId)))
+        .limit(1);
+      if (otherFollowUp) {
+        return null;
+      }
+
       const doc = await this.collection.doc(id).get();
       if (!doc.exists) return null;
       const docData = doc.data()!;
@@ -327,6 +358,45 @@ export class FollowUpService {
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-up:', error);
       return null;
+    }
+  }
+
+  /**
+   * Delete follow-up visit with multi-tenant enforcement
+   */
+  async deleteFollowUp(id: string, tenantId?: string): Promise<boolean> {
+    try {
+      const resolvedTenantId = await this.getTenantId(tenantId);
+      const [deleted] = await pgDb
+        .delete(pgFollowUpVisits)
+        .where(
+          and(
+            eq(pgFollowUpVisits.id, id),
+            eq(pgFollowUpVisits.tenantId, resolvedTenantId)
+          )
+        )
+        .returning({ id: pgFollowUpVisits.id });
+
+      if (deleted) {
+        try { await this.collection.doc(id).delete(); } catch (_) {}
+        return true;
+      }
+
+      const [otherFollowUp] = await pgDb
+        .select({ id: pgFollowUpVisits.id })
+        .from(pgFollowUpVisits)
+        .where(and(eq(pgFollowUpVisits.id, id), ne(pgFollowUpVisits.tenantId, resolvedTenantId)))
+        .limit(1);
+      if (otherFollowUp) {
+        throw new Error("Unauthorized: Follow-up visit belongs to another tenant");
+      }
+      return false;
+    } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
+      console.error('FOLLOW_UP_SERVICE: Error deleting follow-up:', error);
+      return false;
     }
   }
 
@@ -349,8 +419,11 @@ export class FollowUpService {
       return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-ups for original visit:', error);
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const snapshot = await this.collection.where('originalVisitId', '==', originalVisitId).get();
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }));
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()), tenantId: doc.data().tenantId }))
+        .filter(doc => !doc.tenantId || doc.tenantId === resolvedTenantId);
       return docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
   }
@@ -369,8 +442,11 @@ export class FollowUpService {
       return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting all follow-ups:', error);
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const snapshot = await this.collection.get();
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }));
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()), tenantId: doc.data().tenantId }))
+        .filter(doc => !doc.tenantId || doc.tenantId === resolvedTenantId);
       return docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
   }
@@ -401,10 +477,12 @@ export class FollowUpService {
       return rows.map(r => this.convertPostgresToFollowUp(r));
     } catch (error) {
       console.error('FOLLOW_UP_SERVICE: Error getting follow-ups by user:', error);
+      const resolvedTenantId = await this.getTenantId(tenantId);
       const snapshot = await this.collection.where('userId', '==', userId).get();
       const docs = snapshot.docs
-        .map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()) }))
+        .map(doc => ({ id: doc.id, ...this.convertFirestoreToFollowUp(doc.data()), tenantId: doc.data().tenantId }))
         .filter(doc => {
+          if (doc.tenantId && doc.tenantId !== resolvedTenantId) return false;
           if (department && doc.department !== department) return false;
           if (status && doc.status !== status) return false;
           return true;
