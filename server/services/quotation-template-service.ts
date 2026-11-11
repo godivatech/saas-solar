@@ -1942,7 +1942,7 @@ export class QuotationTemplateService {
     return {
       header: companyHeader,
       quotationNumber: quotation.quotationNumber || this.generateQuotationNumber(),
-      quotationDate: new Date().toLocaleDateString('en-GB'),
+      quotationDate: new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }),
       quoteRevision: quotation.documentVersion || 1,
       quoteValidity: `${validityDays} Days`,
       preparedBy: preparedByName || quotation.preparedBy || "SM",

@@ -8,7 +8,8 @@ export class NotificationService {
         const formattedDate = date.toLocaleDateString('en-IN', {
             day: 'numeric',
             month: 'short',
-            year: 'numeric'
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
         });
 
         return await storage.createNotification({
@@ -35,7 +36,8 @@ export class NotificationService {
 
         const formattedDate = date.toLocaleDateString('en-IN', {
             day: 'numeric',
-            month: 'short'
+            month: 'short',
+            timeZone: 'Asia/Kolkata'
         });
 
         const promises = allAdmins.map(admin =>
@@ -61,7 +63,8 @@ export class NotificationService {
     static async notifyAdjustmentMade(userId: string, date: Date, action: 'accepted' | 'adjusted' | 'rejected', notes?: string) {
         const formattedDate = date.toLocaleDateString('en-IN', {
             day: 'numeric',
-            month: 'short'
+            month: 'short',
+            timeZone: 'Asia/Kolkata'
         });
 
         let title = '';
@@ -100,7 +103,8 @@ export class NotificationService {
         const formattedDate = visitStartTime.toLocaleDateString('en-IN', {
             day: 'numeric',
             month: 'short',
-            year: 'numeric'
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
         });
 
         return await storage.createNotification({

@@ -96,7 +96,8 @@ export class SiteVisitAutoCloseService {
             const formattedDate = visit.siteInTime.toLocaleDateString('en-IN', {
                 day: 'numeric',
                 month: 'short',
-                year: 'numeric'
+                year: 'numeric',
+                timeZone: 'Asia/Kolkata'
             });
 
             const customerName = visit.customer?.name || 'Unknown Customer';

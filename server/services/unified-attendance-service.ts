@@ -434,12 +434,14 @@ export class UnifiedAttendanceService {
           const startStr = approvedLeave.startDate.toLocaleDateString('en-IN', {
             day: 'numeric',
             month: 'short',
-            year: 'numeric'
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
           });
           const endStr = approvedLeave.endDate.toLocaleDateString('en-IN', {
             day: 'numeric',
             month: 'short',
-            year: 'numeric'
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
           });
           dateInfo = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
         }
@@ -695,7 +697,7 @@ export class UnifiedAttendanceService {
         userId: request.userId
       });
 
-      const actualCheckInTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      const actualCheckInTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
       return {
         success: true,
