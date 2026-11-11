@@ -4356,10 +4356,19 @@ export class FirestoreStorage implements IStorage {
 
   // Department Timing Management
   async getDepartmentTiming(department: string): Promise<any | undefined> {
-    const doc = await this.db.collection('departmentTimings').doc(department).get();
+    const activeTenantId = getActiveTenantId();
+    const docId = activeTenantId ? `${activeTenantId}_${department}` : department;
+    let doc = await this.db.collection('departmentTimings').doc(docId).get();
+    if (!doc.exists && activeTenantId) {
+      doc = await this.db.collection('departmentTimings').doc(department).get();
+    }
     if (!doc.exists) return undefined;
 
     const data = doc.data()!;
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
+
     return {
       id: doc.id,
       ...data,
@@ -4369,9 +4378,12 @@ export class FirestoreStorage implements IStorage {
   }
 
   async updateDepartmentTiming(department: string, data: any): Promise<any> {
-    const doc = this.db.collection('departmentTimings').doc(department);
+    const activeTenantId = getActiveTenantId();
+    const docId = activeTenantId ? `${activeTenantId}_${department}` : department;
+    const doc = this.db.collection('departmentTimings').doc(docId);
     const updateData = {
       ...data,
+      tenantId: (data as any).tenantId || activeTenantId,
       department,
       updatedAt: new Date(),
     };
@@ -4389,19 +4401,26 @@ export class FirestoreStorage implements IStorage {
   }
 
   async listDepartmentTimings(): Promise<any[]> {
-    const querySnapshot = await this.db.collection('departmentTimings')
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('departmentTimings');
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query
       .orderBy('department', 'asc')
       .get();
 
-    return querySnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-      };
-    });
+    return querySnapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        };
+      })
+      .filter((timing: any) => !activeTenantId || !timing.tenantId || timing.tenantId === activeTenantId);
   }
 
   // Payroll Calculation Utilities
@@ -5746,19 +5765,27 @@ export class FirestoreStorage implements IStorage {
     try {
       // UTC-safe date normalization
       const normalizedDate = getUTCMidnight(date);
+      const activeTenantId = getActiveTenantId();
 
-      const snapshot = await this.db.collection('holidays')
+      let query: any = this.db.collection('holidays')
         .where('date', '==', Timestamp.fromDate(normalizedDate))
-        .where('isActive', '==', true)
-        .get();
+        .where('isActive', '==', true);
 
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date?.toDate(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate()
-      }));
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const snapshot = await query.get();
+
+      return snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date?.toDate(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate()
+        }))
+        .filter((h: any) => !activeTenantId || !h.tenantId || h.tenantId === activeTenantId);
     } catch (error) {
       console.error('Error getting holidays by date:', error);
       return [];
@@ -5770,20 +5797,29 @@ export class FirestoreStorage implements IStorage {
    */
   async getHolidaysByDateRange(startDate: Date, endDate: Date): Promise<any[]> {
     try {
-      const snapshot = await this.db.collection('holidays')
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('holidays')
         .where('date', '>=', Timestamp.fromDate(startDate))
         .where('date', '<=', Timestamp.fromDate(endDate))
-        .where('isActive', '==', true)
+        .where('isActive', '==', true);
+
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const snapshot = await query
         .orderBy('date', 'asc')
         .get();
 
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date?.toDate(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate()
-      }));
+      return snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date?.toDate(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate()
+        }))
+        .filter((h: any) => !activeTenantId || !h.tenantId || h.tenantId === activeTenantId);
     } catch (error) {
       console.error('Error getting holidays by date range:', error);
       return [];
@@ -5795,8 +5831,10 @@ export class FirestoreStorage implements IStorage {
    */
   async createHoliday(holiday: any): Promise<void> {
     try {
+      const activeTenantId = getActiveTenantId();
       const holidayData = {
         ...holiday,
+        tenantId: holiday.tenantId || activeTenantId,
         date: Timestamp.fromDate(holiday.date),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
@@ -5814,6 +5852,16 @@ export class FirestoreStorage implements IStorage {
    */
   async updateHoliday(id: string, updates: any): Promise<void> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const docRef = this.db.collection('holidays').doc(id);
+      const existing = await docRef.get();
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Holiday belongs to another tenant");
+        }
+      }
+
       const updateData: any = { ...updates };
 
       if (updates.date) {
@@ -5822,7 +5870,7 @@ export class FirestoreStorage implements IStorage {
 
       updateData.updatedAt = Timestamp.now();
 
-      await this.db.collection('holidays').doc(id).update(updateData);
+      await docRef.update(updateData);
     } catch (error) {
       console.error('Error updating holiday:', error);
       throw error;
@@ -5834,7 +5882,17 @@ export class FirestoreStorage implements IStorage {
    */
   async deleteHoliday(id: string): Promise<boolean> {
     try {
-      await this.db.collection('holidays').doc(id).update({
+      const activeTenantId = getActiveTenantId();
+      const docRef = this.db.collection('holidays').doc(id);
+      const existing = await docRef.get();
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Holiday belongs to another tenant");
+        }
+      }
+
+      await docRef.update({
         isActive: false,
         updatedAt: Timestamp.now()
       });
@@ -5850,7 +5908,12 @@ export class FirestoreStorage implements IStorage {
    */
   async getCompanySettings(): Promise<any | undefined> {
     try {
-      const doc = await this.db.collection('company_settings').doc('1').get();
+      const activeTenantId = getActiveTenantId();
+      const docId = activeTenantId || '1';
+      let doc = await this.db.collection('company_settings').doc(docId).get();
+      if (!doc.exists && activeTenantId) {
+        doc = await this.db.collection('company_settings').doc('1').get();
+      }
 
       if (!doc.exists) {
         return undefined;
@@ -5859,7 +5922,8 @@ export class FirestoreStorage implements IStorage {
       return {
         id: doc.id,
         ...doc.data(),
-        updatedAt: doc.data()?.updatedAt?.toDate()
+        tenantId: activeTenantId || doc.data()?.tenantId,
+        updatedAt: doc.data()?.updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date()
       };
     } catch (error) {
       console.error('Error getting company settings:', error);
@@ -5872,13 +5936,16 @@ export class FirestoreStorage implements IStorage {
    */
   async updateCompanySettings(settings: any): Promise<void> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const docId = activeTenantId || '1';
       const updateData = {
         ...settings,
+        tenantId: settings.tenantId || activeTenantId,
         updatedAt: Timestamp.now()
       };
 
       // Upsert (create if doesn't exist)
-      await this.db.collection('company_settings').doc('1').set(updateData, { merge: true });
+      await this.db.collection('company_settings').doc(docId).set(updateData, { merge: true });
     } catch (error) {
       console.error('Error updating company settings:', error);
       throw error;
@@ -5890,21 +5957,31 @@ export class FirestoreStorage implements IStorage {
    */
   async getPayrollPeriod(month: number, year: number): Promise<any | undefined> {
     try {
-      const snapshot = await this.db.collection('payroll_periods')
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('payroll_periods')
         .where('month', '==', month)
-        .where('year', '==', year)
-        .limit(1)
-        .get();
+        .where('year', '==', year);
+
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const snapshot = await query.limit(1).get();
 
       if (snapshot.empty) {
         return undefined;
       }
 
       const doc = snapshot.docs[0];
+      const data = doc.data() || {};
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
-        ...doc.data(),
-        lockedAt: doc.data().lockedAt?.toDate()
+        ...data,
+        lockedAt: data.lockedAt?.toDate()
       };
     } catch (error) {
       console.error('Error getting payroll period:', error);
@@ -5917,8 +5994,10 @@ export class FirestoreStorage implements IStorage {
    */
   async createPayrollPeriod(period: any): Promise<void> {
     try {
+      const activeTenantId = getActiveTenantId();
       const periodData = {
         ...period,
+        tenantId: period.tenantId || activeTenantId,
         lockedAt: period.lockedAt ? Timestamp.fromDate(period.lockedAt) : null
       };
 
@@ -5934,13 +6013,23 @@ export class FirestoreStorage implements IStorage {
    */
   async updatePayrollPeriod(id: string, updates: any): Promise<void> {
     try {
+      const activeTenantId = getActiveTenantId();
+      const docRef = this.db.collection('payroll_periods').doc(id);
+      const existing = await docRef.get();
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Payroll period belongs to another tenant");
+        }
+      }
+
       const updateData: any = { ...updates };
 
       if (updates.lockedAt) {
         updateData.lockedAt = Timestamp.fromDate(updates.lockedAt);
       }
 
-      await this.db.collection('payroll_periods').doc(id).update(updateData);
+      await docRef.update(updateData);
     } catch (error) {
       console.error('Error updating payroll period:', error);
       throw error;
@@ -5952,16 +6041,25 @@ export class FirestoreStorage implements IStorage {
    */
   async getPayrollPeriodsByYear(year: number): Promise<any[]> {
     try {
-      const snapshot = await this.db.collection('payroll_periods')
-        .where('year', '==', year)
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('payroll_periods')
+        .where('year', '==', year);
+
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const snapshot = await query
         .orderBy('month', 'asc')
         .get();
 
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        lockedAt: doc.data().lockedAt?.toDate()
-      }));
+      return snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          lockedAt: doc.data().lockedAt?.toDate()
+        }))
+        .filter((p: any) => !activeTenantId || !p.tenantId || p.tenantId === activeTenantId);
     } catch (error) {
       console.error('Error getting payroll periods by year:', error);
       return [];
@@ -5973,15 +6071,23 @@ export class FirestoreStorage implements IStorage {
    */
   async listAttendanceByDateRange(startDate: Date, endDate: Date): Promise<Attendance[]> {
     try {
-      const snapshot = await this.db.collection('attendance')
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('attendance')
         .where('date', '>=', Timestamp.fromDate(startDate))
-        .where('date', '<=', Timestamp.fromDate(endDate))
-        .get();
+        .where('date', '<=', Timestamp.fromDate(endDate));
 
-      return snapshot.docs.map(doc => this.convertFirestoreToAttendance({
-        id: doc.id,
-        ...doc.data()
-      }));
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const snapshot = await query.get();
+
+      return snapshot.docs
+        .map(doc => this.convertFirestoreToAttendance({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter((att: any) => !activeTenantId || !att.tenantId || att.tenantId === activeTenantId);
     } catch (error) {
       console.error('Error listing attendance by date range:', error);
       return [];
@@ -5994,11 +6100,13 @@ export class FirestoreStorage implements IStorage {
 
   async createNotification(notification: any): Promise<Notification> {
     try {
+      const activeTenantId = getActiveTenantId();
       const id = this.db.collection('notifications').doc().id;
       const now = new Date();
       const notificationData = {
         ...notification,
         id,
+        tenantId: notification.tenantId || activeTenantId,
         createdAt: Timestamp.fromDate(now),
         updatedAt: Timestamp.fromDate(now),
         dismissedAt: notification.dismissedAt ? Timestamp.fromDate(notification.dismissedAt) : null,
@@ -6010,6 +6118,7 @@ export class FirestoreStorage implements IStorage {
       return {
         ...notification,
         id,
+        tenantId: notification.tenantId || activeTenantId,
         createdAt: now,
         updatedAt: now,
       } as Notification;
@@ -6021,8 +6130,12 @@ export class FirestoreStorage implements IStorage {
 
   async getNotifications(userId: string, filters: any = {}): Promise<Notification[]> {
     try {
+      const activeTenantId = getActiveTenantId();
       let query: Query = this.db.collection('notifications').where('userId', '==', userId);
 
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
       if (filters.status) {
         query = query.where('status', '==', filters.status);
       }
@@ -6042,10 +6155,12 @@ export class FirestoreStorage implements IStorage {
 
       const snapshot = await query.get();
 
-      return snapshot.docs.map(doc => this.convertFirestoreToNotification({
-        id: doc.id,
-        ...doc.data()
-      }));
+      return snapshot.docs
+        .map(doc => this.convertFirestoreToNotification({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter((n: any) => !activeTenantId || !n.tenantId || n.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error fetching notifications:", error);
       return [];

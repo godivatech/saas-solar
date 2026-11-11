@@ -1775,7 +1775,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const designation = await storage.updateDesignation(req.params.id, req.body);
       res.json(designation);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating designation:", error);
       res.status(500).json({ message: "Failed to update designation" });
     }
@@ -1790,7 +1793,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.deleteDesignation(req.params.id);
       res.json({ message: "Designation deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting designation:", error);
       res.status(500).json({ message: "Failed to delete designation" });
     }
@@ -2622,6 +2628,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timing: updatedTiming
       });
     } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating department timing:", error);
       res.status(500).json({ message: "Failed to update department timing" });
     }
@@ -4642,7 +4651,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const product = await storage.updateProduct(req.params.id, req.body);
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating product:", error);
       res.status(500).json({ message: "Failed to update product" });
     }
@@ -4656,7 +4668,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.deleteProduct(req.params.id);
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting product:", error);
       res.status(500).json({ message: "Failed to delete product" });
     }
@@ -7159,7 +7174,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timing: updatedTiming,
         message: `Department timing updated successfully for ${department}`
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error(`Error updating timing for department ${req.params.department}:`, error);
       res.status(500).json({ message: "Failed to update department timing" });
     }
@@ -7206,7 +7224,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timing: updatedTiming,
         message: `Department timing updated successfully for ${department}`
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error(`Error updating timing for department ${req.params.department}:`, error);
       res.status(500).json({ message: "Failed to update department timing" });
     }

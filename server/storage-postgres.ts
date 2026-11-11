@@ -4944,7 +4944,7 @@ export class PostgresStorage implements IStorage {
         .limit(1);
 
       if (otherTenantHoliday) {
-        throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+        throw new Error("Unauthorized: Holiday belongs to another tenant");
       }
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -4955,7 +4955,7 @@ export class PostgresStorage implements IStorage {
     }
     const fallbackHoliday = (this.fallback as any)?.getFixedHoliday ? await (this.fallback as any).getFixedHoliday(id) : undefined;
     if (fallbackHoliday && fallbackHoliday.tenantId && fallbackHoliday.tenantId !== (await this.getTenantId())) {
-      throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+      throw new Error("Unauthorized: Holiday belongs to another tenant");
     }
     return (this.fallback as any)?.updateFixedHoliday ? (this.fallback as any).updateFixedHoliday(id, data) : undefined;
   }
@@ -4981,7 +4981,7 @@ export class PostgresStorage implements IStorage {
         .limit(1);
 
       if (otherTenantHoliday) {
-        throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+        throw new Error("Unauthorized: Holiday belongs to another tenant");
       }
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -5241,7 +5241,8 @@ export class PostgresStorage implements IStorage {
             and(
               or(
                 eq(pgPayrollPeriods.id, id),
-                eq(pgPayrollPeriods.id, resolvedId)
+                eq(pgPayrollPeriods.id, resolvedId),
+                ilike(pgPayrollPeriods.id, `%${id}`)
               ),
               ne(pgPayrollPeriods.tenantId, tenantId)
             )
