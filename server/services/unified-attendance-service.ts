@@ -71,14 +71,12 @@ export class UnifiedAttendanceService {
     holiday?: any;
   }> {
     try {
-      const year = date.getFullYear();
+      const year = Number(getISTDateString(date).split('-')[0]);
       const holidays = await storage.listFixedHolidays(year);
 
-      // Helper to compare dates (ignoring time)
+      // Helper to compare dates in IST (ignoring time)
       const isSameDay = (d1: Date, d2: Date): boolean => {
-        return d1.getFullYear() === d2.getFullYear() &&
-          d1.getMonth() === d2.getMonth() &&
-          d1.getDate() === d2.getDate();
+        return getISTDateString(d1) === getISTDateString(d2);
       };
 
       const matchingHoliday = holidays.find(holiday => {
@@ -509,7 +507,7 @@ export class UnifiedAttendanceService {
       console.log('CHECK-IN: Using UTC date for consistency:', {
         serverTime: now.toISOString(),
         utcDate: today.toISOString(),
-        dateString: today.toISOString().split('T')[0]
+        dateString: getISTDateString(today)
       });
 
       const existingAttendance = await storage.getAttendanceByUserAndDate(request.userId, today);

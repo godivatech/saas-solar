@@ -6,6 +6,7 @@
 
 import { storage } from '../storage';
 import { getActiveTenantId } from '../tenant-context';
+import { getISTDayOfWeek } from '../utils/timezone-helpers';
 
 export interface DepartmentTiming {
   department: string;
@@ -362,7 +363,8 @@ export class EnterpriseTimeService {
     return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
+      timeZone: 'Asia/Kolkata'
     });
   }
 
@@ -437,8 +439,8 @@ export class EnterpriseTimeService {
     let nextDate = new Date(fromDate);
     nextDate.setDate(nextDate.getDate() + 1);
 
-    // Skip weekends
-    while (timing.weekendDays.includes(nextDate.getDay())) {
+    // Skip weekends (IST-safe day-of-week)
+    while (timing.weekendDays.includes(getISTDayOfWeek(nextDate))) {
       nextDate.setDate(nextDate.getDate() + 1);
     }
 

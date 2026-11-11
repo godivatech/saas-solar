@@ -9,6 +9,7 @@
  */
 
 import { storage } from '../storage';
+import { getISTDateString } from '../utils/timezone-helpers';
 import type { PayrollPeriod } from '../types/ot-types';
 import { OTSessionService } from './ot-session-service';
 
@@ -174,8 +175,7 @@ export class PayrollLockService {
      */
     static async isPeriodLocked(date: Date): Promise<boolean> {
         try {
-            const month = date.getMonth() + 1;
-            const year = date.getFullYear();
+            const [year, month] = getISTDateString(date).split('-').map(Number);
 
             const period = await storage.getPayrollPeriod(month, year);
             return period?.status === 'locked';

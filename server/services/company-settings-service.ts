@@ -11,6 +11,7 @@
 
 import { storage } from '../storage';
 import type { CompanySettings } from '../types/ot-types';
+import { getISTDayOfWeek } from '../utils/timezone-helpers';
 
 export class CompanySettingsService {
 
@@ -168,17 +169,17 @@ export class CompanySettingsService {
     }
 
     /**
-     * Check if a specific day is a weekend
+     * Check if a specific day is a weekend (IST timezone safe)
      */
     static async isWeekend(date: Date): Promise<boolean> {
         try {
             const settings = await this.getSettings();
-            const dayOfWeek = date.getDay();
+            const dayOfWeek = getISTDayOfWeek(date);
             return settings.weekendDays.includes(dayOfWeek);
         } catch (error) {
             console.error('Error checking weekend:', error);
             // Default: Sunday only
-            return date.getDay() === 0;
+            return getISTDayOfWeek(date) === 0;
         }
     }
 

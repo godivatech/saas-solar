@@ -143,7 +143,6 @@ export class ManualOTService {
       }
 
       const currentTime = new Date();
-      const dayOfWeek = currentTime.getDay();
 
       // ✅ CONFIGURABLE WEEKEND: Use CompanySettingsService for weekend detection
       const { CompanySettingsService } = await import('./company-settings-service');

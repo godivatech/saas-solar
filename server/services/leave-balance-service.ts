@@ -1,6 +1,7 @@
 import { IStorage, storage } from "../storage";
 import { InsertLeaveBalance, FIXED_ANNUAL_HOLIDAYS } from "@shared/schema";
 import { runWithTenant } from "../tenant-context";
+import { getISTDateString } from "../utils/timezone-helpers";
 
 export class LeaveBalanceService {
   constructor(private storage: IStorage) {}
@@ -52,8 +53,7 @@ export class LeaveBalanceService {
 
   async initializeBalanceForUser(userId: string, employeeId: string): Promise<void> {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const [currentYear, currentMonth] = getISTDateString(now).split('-').map(Number);
 
     const existingBalance = await this.storage.getLeaveBalance(userId, currentMonth, currentYear);
     
@@ -84,8 +84,7 @@ export class LeaveBalanceService {
 
   async getBalanceSummary(userId: string) {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const [currentYear, currentMonth] = getISTDateString(now).split('-').map(Number);
 
     let balance = await this.storage.getLeaveBalance(userId, currentMonth, currentYear);
     
@@ -159,7 +158,7 @@ export class LeaveBalanceService {
   }
 
   async getUpcomingHolidays(year?: number): Promise<any[]> {
-    const targetYear = year || new Date().getFullYear();
+    const targetYear = year || Number(getISTDateString(new Date()).split('-')[0]);
     const holidays = await this.storage.listFixedHolidays(targetYear);
     const now = new Date();
 
@@ -170,10 +169,9 @@ export class LeaveBalanceService {
 
   async runScheduledMonthlyReset(): Promise<void> {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const [currentYear, currentMonth, currentDay] = getISTDateString(now).split('-').map(Number);
 
-    if (now.getDate() === 1) {
+    if (currentDay === 1) {
       await this.resetMonthlyLeaveBalances(currentMonth, currentYear);
     }
   }
@@ -184,8 +182,7 @@ export class LeaveBalanceService {
    */
   static async processMonthlyResetAllTenants(): Promise<void> {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const [currentYear, currentMonth] = getISTDateString(now).split('-').map(Number);
 
     console.log(`[LeaveBalanceService] Starting monthly reset across all tenants for ${currentMonth}/${currentYear}`);
     try {

@@ -67,7 +67,7 @@ import {
 } from "@shared/schema.postgres";
 import { eq, or, ilike, and, desc, sql, gte, lte, inArray, ne } from "drizzle-orm";
 import { getActiveTenantId } from "./tenant-context";
-import { getISTDateString } from "./utils/timezone-helpers";
+import { getISTDateString, getISTDayOfWeek } from "./utils/timezone-helpers";
 
 /**
  * Enterprise PostgreSQL Storage Layer
@@ -324,7 +324,7 @@ export class PostgresStorage implements IStorage {
 
       const [u] = await pgDb.insert(pgUsers).values(insertValues).returning();
 
-      try { await this.fallback.createUser(data); } catch (_) {}
+      try { await this.fallback.createUser(data); } catch (_) { }
 
       return this.mapUser(u);
     } catch (e) {
@@ -369,9 +369,9 @@ export class PostgresStorage implements IStorage {
       const activeTenantId = getActiveTenantId();
       const whereCondition = activeTenantId
         ? and(
-            or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)),
-            eq(pgUsers.tenantId, activeTenantId)
-          )
+          or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id)),
+          eq(pgUsers.tenantId, activeTenantId)
+        )
         : or(eq(pgUsers.id, id), eq(pgUsers.firebaseUid, id));
 
       const [u] = await pgDb
@@ -381,7 +381,7 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (u) {
-        try { await this.fallback.updateUser(id, data); } catch (_) {}
+        try { await this.fallback.updateUser(id, data); } catch (_) { }
         return this.mapUser(u);
       }
 
@@ -540,7 +540,7 @@ export class PostgresStorage implements IStorage {
           const { getEffectivePermissions } = await import("@shared/schema");
           const deptPerms = getEffectivePermissions(user.department, user.designation);
           deptPerms.forEach(p => permissions.add(p));
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return Array.from(permissions);
@@ -733,7 +733,7 @@ export class PostgresStorage implements IStorage {
         isDeleted: false
       }).returning();
 
-      try { await this.fallback.createCustomer(data); } catch (_) {}
+      try { await this.fallback.createCustomer(data); } catch (_) { }
 
       return this.mapCustomer(c);
     } catch (e) {
@@ -778,7 +778,7 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (c) {
-        try { await this.fallback.updateCustomer(id, data); } catch (_) {}
+        try { await this.fallback.updateCustomer(id, data); } catch (_) { }
         return this.mapCustomer(c);
       }
 
@@ -821,7 +821,7 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (deleted) {
-        try { await (this.fallback as any)?.deleteCustomer?.(id); } catch (_) {}
+        try { await (this.fallback as any)?.deleteCustomer?.(id); } catch (_) { }
         return;
       }
 
@@ -1037,7 +1037,7 @@ export class PostgresStorage implements IStorage {
           balanceAmount: Math.round(Number(created.customerPayment) * 0.8)
         };
         await this.fallback.createQuotation(enrichedForFallback);
-      } catch (_) {}
+      } catch (_) { }
 
       return this.mapQuotation(created);
     } catch (e) {
@@ -1083,7 +1083,7 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (updated) {
-        try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) {}
+        try { await this.fallback.updateQuotation(id, data, updatedBy); } catch (_) { }
         return this.mapQuotation(updated);
       }
 
@@ -1124,7 +1124,7 @@ export class PostgresStorage implements IStorage {
         )
         .returning();
       if (deleted) {
-        try { await this.fallback.deleteQuotation(id); } catch (_) {}
+        try { await this.fallback.deleteQuotation(id); } catch (_) { }
         return;
       }
 
@@ -1227,7 +1227,7 @@ export class PostgresStorage implements IStorage {
         status: data.status || 'pending'
       }).returning();
 
-      try { await this.fallback.createInvoice(data); } catch (_) {}
+      try { await this.fallback.createInvoice(data); } catch (_) { }
 
       return this.mapInvoice(created);
     } catch (e) {
@@ -1263,7 +1263,7 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (updated) {
-        try { await this.fallback.updateInvoice(id, data); } catch (_) {}
+        try { await this.fallback.updateInvoice(id, data); } catch (_) { }
         return this.mapInvoice(updated);
       }
 
@@ -1304,7 +1304,7 @@ export class PostgresStorage implements IStorage {
         )
         .returning();
       if (deleted) {
-        try { await this.fallback.deleteInvoice(id); } catch (_) {}
+        try { await this.fallback.deleteInvoice(id); } catch (_) { }
         return;
       }
 
@@ -1864,7 +1864,7 @@ export class PostgresStorage implements IStorage {
         otSessions: Array.isArray(data.otSessions) ? data.otSessions : []
       }).returning();
 
-      try { await this.fallback.createAttendance(data); } catch (_) {}
+      try { await this.fallback.createAttendance(data); } catch (_) { }
       return this.mapAttendance(row);
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -1917,7 +1917,7 @@ export class PostgresStorage implements IStorage {
           throw new Error("Unauthorized: Attendance record belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateAttendance(id, data); } catch (_) {}
+        try { await this.fallback.updateAttendance(id, data); } catch (_) { }
         return this.mapAttendance(updated);
       }
     } catch (e) {
@@ -2285,7 +2285,8 @@ export class PostgresStorage implements IStorage {
 
   async getCurrentLeaveBalance(userId: string): Promise<LeaveBalance | undefined> {
     const now = new Date();
-    return this.getLeaveBalance(userId, now.getMonth() + 1, now.getFullYear());
+    const [year, month] = getISTDateString(now).split('-').map(Number);
+    return this.getLeaveBalance(userId, month, year);
   }
 
   async createLeaveBalance(data: any): Promise<LeaveBalance> {
@@ -2317,7 +2318,7 @@ export class PostgresStorage implements IStorage {
         permissionHoursUsed: String(data.permissionHoursUsed ?? 0)
       }).returning();
 
-      try { await this.fallback.createLeaveBalance(data); } catch (_) {}
+      try { await this.fallback.createLeaveBalance(data); } catch (_) { }
       return ({
         id: lb.id,
         userId: lb.userId,
@@ -2368,7 +2369,7 @@ export class PostgresStorage implements IStorage {
           throw new Error("Unauthorized: Leave balance belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateLeaveBalance(id, data); } catch (_) {}
+        try { await this.fallback.updateLeaveBalance(id, data); } catch (_) { }
         return ({
           id: lb.id,
           userId: lb.userId,
@@ -2550,7 +2551,7 @@ export class PostgresStorage implements IStorage {
           reportingManagerId: data.reportingManagerId || user?.reportingManagerId || data.userId
         };
       }
-      try { await this.fallback.createLeaveApplication(fallbackData); } catch (_) {}
+      try { await this.fallback.createLeaveApplication(fallbackData); } catch (_) { }
       return this.mapLeaveApp(app);
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -2589,7 +2590,7 @@ export class PostgresStorage implements IStorage {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateLeaveApplication(id, data); } catch (_) {}
+        try { await this.fallback.updateLeaveApplication(id, data); } catch (_) { }
         return this.mapLeaveApp(updated);
       }
     } catch (e) {
@@ -2732,7 +2733,7 @@ export class PostgresStorage implements IStorage {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
         }
       } else {
-        try { await this.fallback.approveLeaveByManager(leaveId, managerId, remarks); } catch (_) {}
+        try { await this.fallback.approveLeaveByManager(leaveId, managerId, remarks); } catch (_) { }
         return this.mapLeaveApp(updated);
       }
     } catch (e) {
@@ -2796,10 +2797,9 @@ export class PostgresStorage implements IStorage {
           )
           .returning();
 
-        // 3. Atomically update leave balance
+        // 3. Atomically update leave balance (IST-safe month/year)
         const targetDate = new Date(leave.startDate || leave.permissionDate || leave.appliedAt || new Date());
-        const year = targetDate.getFullYear();
-        const month = targetDate.getMonth() + 1;
+        const [year, month] = getISTDateString(targetDate).split('-').map(Number);
 
         if (leave.leaveType === "casual_leave") {
           const daysToDeduct = Number(leave.totalDays || leave.daysCount || 1);
@@ -2878,7 +2878,7 @@ export class PostgresStorage implements IStorage {
       });
 
       if (updated) {
-        try { await this.fallback.approveLeaveByHR(leaveId, hrId, remarks); } catch (_) {}
+        try { await this.fallback.approveLeaveByHR(leaveId, hrId, remarks); } catch (_) { }
         return this.mapLeaveApp(updated);
       }
     } catch (e) {
@@ -2918,7 +2918,7 @@ export class PostgresStorage implements IStorage {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
         }
       } else {
-        try { await this.fallback.rejectLeave(leaveId, rejectedBy, reason, rejectedByRole); } catch (_) {}
+        try { await this.fallback.rejectLeave(leaveId, rejectedBy, reason, rejectedByRole); } catch (_) { }
         return this.mapLeaveApp(updated);
       }
     } catch (e) {
@@ -2973,11 +2973,10 @@ export class PostgresStorage implements IStorage {
           )
           .returning();
 
-        // If it was already approved, restore the deducted leave balance
+        // If it was already approved, restore the deducted leave balance (IST-safe month/year)
         if (wasApproved) {
           const targetDate = new Date(leave.startDate || leave.permissionDate || leave.appliedAt || new Date());
-          const year = targetDate.getFullYear();
-          const month = targetDate.getMonth() + 1;
+          const [year, month] = getISTDateString(targetDate).split('-').map(Number);
 
           if (leave.leaveType === "casual_leave") {
             const daysToRestore = Number(leave.totalDays || leave.daysCount || 1);
@@ -3018,7 +3017,7 @@ export class PostgresStorage implements IStorage {
       });
 
       if (updated) {
-        try { await this.fallback.cancelLeaveApplication(leaveId, userId); } catch (_) {}
+        try { await this.fallback.cancelLeaveApplication(leaveId, userId); } catch (_) { }
         return this.mapLeaveApp(updated);
       }
     } catch (e) {
@@ -3034,7 +3033,7 @@ export class PostgresStorage implements IStorage {
     return (this.fallback as any)?.cancelLeaveApplication ? (this.fallback as any).cancelLeaveApplication(leaveId, userId) : undefined as any;
   }
 
-async getLeave(id: string): Promise<any | undefined> {
+  async getLeave(id: string): Promise<any | undefined> {
     const app = await this.getLeaveApplication(id);
     if (!app) return undefined;
     return {
@@ -3219,10 +3218,11 @@ async getLeave(id: string): Promise<any | undefined> {
       const now = new Date();
       const amountVal = String(data.amount || data.requestAmount || 0);
       const monthlyDeduct = String(data.monthlyDeduction || data.monthlyEmiAmount || 0);
-      const emiCount = Number(data.numberOfInstallments || data.emiCount) || 
+      const emiCount = Number(data.numberOfInstallments || data.emiCount) ||
         (Number(monthlyDeduct) > 0 ? Math.ceil(Number(amountVal) / Number(monthlyDeduct)) : 1);
-      const startMonth = Number(data.deductionStartMonth) || (now.getMonth() + 1);
-      const startYear = Number(data.deductionStartYear) || now.getFullYear();
+      const [nowYear, nowMonth] = getISTDateString(now).split('-').map(Number);
+      const startMonth = Number(data.deductionStartMonth) || nowMonth;
+      const startYear = Number(data.deductionStartYear) || nowYear;
 
       const [adv] = await pgDb.insert(pgSalaryAdvances).values({
         tenantId,
@@ -3240,7 +3240,7 @@ async getLeave(id: string): Promise<any | undefined> {
         status: data.status || "pending"
       }).returning();
 
-      try { await this.fallback.createSalaryAdvance(data); } catch (_) {}
+      try { await this.fallback.createSalaryAdvance(data); } catch (_) { }
       return this.mapSalaryAdvance(adv);
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -3283,7 +3283,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Salary advance belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateSalaryAdvance(id, data); } catch (_) {}
+        try { await this.fallback.updateSalaryAdvance(id, data); } catch (_) { }
         return this.mapSalaryAdvance(adv);
       }
     } catch (e) {
@@ -3488,7 +3488,7 @@ async getLeave(id: string): Promise<any | undefined> {
         payslipUrl: data.payslipUrl || null
       }).returning();
 
-      try { await this.fallback.createPayroll(data); } catch (_) {}
+      try { await this.fallback.createPayroll(data); } catch (_) { }
       return this.mapPayroll(p);
     } catch (e) {
       console.error("[PostgresStorage] createPayroll error:", e);
@@ -3526,7 +3526,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Payroll belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updatePayroll(id, data); } catch (_) {}
+        try { await this.fallback.updatePayroll(id, data); } catch (_) { }
         return this.mapPayroll(p);
       }
     } catch (e) {
@@ -3650,7 +3650,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
     let workingDays = 0;
     for (let day = 1; day <= lastDay; day++) {
-      const dayOfWeek = new Date(year, month - 1, day).getDay();
+      const dayOfWeek = getISTDayOfWeek(new Date(Date.UTC(year, month - 1, day, 6, 0, 0)));
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         workingDays++;
       }
@@ -3912,7 +3912,7 @@ async getLeave(id: string): Promise<any | undefined> {
           ...updateValues
         });
       }
-      try { await this.fallback.updateCompanySettings(settings); } catch (_) {}
+      try { await this.fallback.updateCompanySettings(settings); } catch (_) { }
     } catch (e) {
       console.error("[PostgresStorage] updateCompanySettings error:", e);
       return this.fallback.updateCompanySettings(settings);
@@ -3991,7 +3991,7 @@ async getLeave(id: string): Promise<any | undefined> {
       }).returning();
 
       if (typeof (this.fallback as any).createOfficeLocation === 'function') {
-        try { await (this.fallback as any).createOfficeLocation(data); } catch (_) {}
+        try { await (this.fallback as any).createOfficeLocation(data); } catch (_) { }
       }
 
       return {
@@ -4061,7 +4061,7 @@ async getLeave(id: string): Promise<any | undefined> {
           .returning();
       }
 
-      try { await this.fallback.updateDepartmentTiming(department, data); } catch (_) {}
+      try { await this.fallback.updateDepartmentTiming(department, data); } catch (_) { }
       return updated;
     } catch (e) {
       console.error("[PostgresStorage] updateDepartmentTiming error:", e);
@@ -4098,7 +4098,7 @@ async getLeave(id: string): Promise<any | undefined> {
           }
         })
         .returning();
-      try { await (this.fallback as any).createDepartmentTiming?.(data); } catch (_) {}
+      try { await (this.fallback as any).createDepartmentTiming?.(data); } catch (_) { }
       return upserted;
     } catch (e) {
       console.error("[PostgresStorage] createDepartmentTiming error:", e);
@@ -4123,7 +4123,7 @@ async getLeave(id: string): Promise<any | undefined> {
         userAgent: data.userAgent || null
       }).returning();
 
-      try { await this.fallback.createAuditLog(data); } catch (_) {}
+      try { await this.fallback.createAuditLog(data); } catch (_) { }
       return log;
     } catch (e) {
       console.error("[PostgresStorage] createAuditLog error:", e);
@@ -4184,7 +4184,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isRead: Boolean(data.isRead ?? false),
         metadata: data.metadata || {}
       }).returning();
-      try { await this.fallback.createNotification(data); } catch (_) {}
+      try { await this.fallback.createNotification(data); } catch (_) { }
       return n;
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -4256,7 +4256,7 @@ async getLeave(id: string): Promise<any | undefined> {
         }
       }
 
-      try { await this.fallback.updateNotification(id, updates); } catch (_) {}
+      try { await this.fallback.updateNotification(id, updates); } catch (_) { }
       return n;
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -4278,14 +4278,14 @@ async getLeave(id: string): Promise<any | undefined> {
             lte(pgNotifications.createdAt, expiryDate)
           )
         );
-      try { await this.fallback.deleteExpiredNotifications(expiryDate); } catch (_) {}
+      try { await this.fallback.deleteExpiredNotifications(expiryDate); } catch (_) { }
     } catch (e) {
       console.error("[PostgresStorage] deleteExpiredNotifications error:", e);
       return this.fallback.deleteExpiredNotifications(expiryDate);
     }
   }
 
-// ===================================================================
+  // ===================================================================
   // SALARY STRUCTURES & PAYROLL
   // ===================================================================
   async getSalaryStructure(id: string): Promise<SalaryStructure | undefined> {
@@ -4390,7 +4390,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive ?? true
       }).returning();
 
-      try { await this.fallback.createSalaryStructure(data); } catch (_) {}
+      try { await this.fallback.createSalaryStructure(data); } catch (_) { }
       return {
         id: s.id,
         userId: s.userId,
@@ -4458,7 +4458,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Salary structure belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateSalaryStructure(id, data); } catch (_) {}
+        try { await this.fallback.updateSalaryStructure(id, data); } catch (_) { }
         return {
           id: s.id,
           userId: s.userId,
@@ -4613,7 +4613,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning();
 
       if (updated) {
-        try { await this.fallback.updatePayrollSettings(data); } catch (_) {}
+        try { await this.fallback.updatePayrollSettings(data); } catch (_) { }
         return {
           id: updated.id,
           tenantId: updated.tenantId,
@@ -4712,7 +4712,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       const [h] = await pgDb.insert(pgFixedHolidays).values(insertValues).returning();
 
-      try { await this.fallback.createFixedHoliday(data); } catch (_) {}
+      try { await this.fallback.createFixedHoliday(data); } catch (_) { }
       return this.mapFixedHoliday(h);
     } catch (e) {
       console.error("[PostgresStorage] createFixedHoliday error:", e);
@@ -4747,7 +4747,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning();
 
       if (h) {
-        try { await this.fallback.updateFixedHoliday(id, data); } catch (_) {}
+        try { await this.fallback.updateFixedHoliday(id, data); } catch (_) { }
         return this.mapFixedHoliday(h);
       }
 
@@ -4784,7 +4784,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .where(and(eq(pgFixedHolidays.id, id), eq(pgFixedHolidays.tenantId, tenantId)))
         .returning();
       if (h) {
-        try { await this.fallback.deleteFixedHoliday(id); } catch (_) {}
+        try { await this.fallback.deleteFixedHoliday(id); } catch (_) { }
         return true;
       }
 
@@ -5016,7 +5016,7 @@ async getLeave(id: string): Promise<any | undefined> {
         }
       }).returning();
 
-      try { await this.fallback.createPayrollPeriod({ ...period, id: periodId }); } catch (_) {}
+      try { await this.fallback.createPayrollPeriod({ ...period, id: periodId }); } catch (_) { }
       return p;
     } catch (e) {
       console.error("[PostgresStorage] createPayrollPeriod error:", e);
@@ -5066,7 +5066,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Payroll period belongs to another tenant");
         }
       } else {
-        try { await (this.fallback as any)?.updatePayrollPeriod?.(id, updates); } catch (_) {}
+        try { await (this.fallback as any)?.updatePayrollPeriod?.(id, updates); } catch (_) { }
       }
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
@@ -5343,7 +5343,7 @@ async getLeave(id: string): Promise<any | undefined> {
         lastUpdatedBy: data.lastUpdatedBy || null
       }).returning();
 
-      try { await this.fallback.createEmployee({ ...data, id: created.id }); } catch (_) {}
+      try { await this.fallback.createEmployee({ ...data, id: created.id }); } catch (_) { }
       return {
         id: created.id,
         employeeId: created.employeeId,
@@ -5405,7 +5405,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Employee belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateEmployee(id, data); } catch (_) {}
+        try { await this.fallback.updateEmployee(id, data); } catch (_) { }
         return {
           id: updated.id,
           employeeId: updated.employeeId,
@@ -5448,7 +5448,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgEmployees.id });
 
       if (deleted) {
-        try { await this.fallback.deleteEmployee(id); } catch (_) {}
+        try { await this.fallback.deleteEmployee(id); } catch (_) { }
         return true;
       }
 
@@ -5688,7 +5688,7 @@ async getLeave(id: string): Promise<any | undefined> {
         notes: data.notes || null
       }).returning();
 
-      try { await this.fallback.createEmployeeDocument({ ...data, id: created.id }); } catch (_) {}
+      try { await this.fallback.createEmployeeDocument({ ...data, id: created.id }); } catch (_) { }
       return {
         id: created.id,
         employeeId: created.employeeId,
@@ -5748,7 +5748,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Employee document belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateEmployeeDocument(id, data); } catch (_) {}
+        try { await this.fallback.updateEmployeeDocument(id, data); } catch (_) { }
         return {
           id: updated.id,
           employeeId: updated.employeeId,
@@ -5789,7 +5789,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgEmployeeDocuments.id });
 
       if (deleted) {
-        try { await this.fallback.deleteEmployeeDocument(id); } catch (_) {}
+        try { await this.fallback.deleteEmployeeDocument(id); } catch (_) { }
         return true;
       }
 
@@ -5933,7 +5933,9 @@ async getLeave(id: string): Promise<any | undefined> {
       });
     } catch (e) {
       console.error("[PostgresStorage] getEmployeePerformanceReviews error:", e);
-      return this.fallback.getEmployeePerformanceReviews(employeeId);
+      const fallbackList = await this.fallback.getEmployeePerformanceReviews(employeeId);
+      const currentTenantId = await this.getTenantId();
+      return fallbackList.filter((pr: any) => !pr.tenantId || pr.tenantId === currentTenantId);
     }
   }
 
@@ -5985,7 +5987,9 @@ async getLeave(id: string): Promise<any | undefined> {
       });
     } catch (e) {
       console.error("[PostgresStorage] getPerformanceReviewsByReviewer error:", e);
-      return this.fallback.getPerformanceReviewsByReviewer(reviewerId);
+      const fallbackList = await this.fallback.getPerformanceReviewsByReviewer(reviewerId);
+      const currentTenantId = await this.getTenantId();
+      return fallbackList.filter((pr: any) => !pr.tenantId || pr.tenantId === currentTenantId);
     }
   }
 
@@ -6027,7 +6031,9 @@ async getLeave(id: string): Promise<any | undefined> {
       });
     } catch (e) {
       console.error("[PostgresStorage] getUpcomingPerformanceReviews error:", e);
-      return this.fallback.getUpcomingPerformanceReviews();
+      const fallbackList = await this.fallback.getUpcomingPerformanceReviews();
+      const currentTenantId = await this.getTenantId();
+      return fallbackList.filter((pr: any) => !pr.tenantId || pr.tenantId === currentTenantId);
     }
   }
 
@@ -6061,6 +6067,21 @@ async getLeave(id: string): Promise<any | undefined> {
         }
       }
 
+      // Ensure reviewer belongs to this tenant
+      if (data.reviewedBy) {
+        const [revOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.reviewedBy), eq(pgUsers.firebaseUid, data.reviewedBy)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (revOtherTenant) {
+          throw new Error("Unauthorized: Reviewer belongs to another tenant");
+        }
+      }
+
       const [created] = await pgDb.insert(pgPerformanceReviews).values({
         tenantId,
         employeeId: data.employeeId,
@@ -6076,7 +6097,7 @@ async getLeave(id: string): Promise<any | undefined> {
         nextReviewDate: data.nextReviewDate ? new Date(data.nextReviewDate) : null
       }).returning();
 
-      try { await this.fallback.createPerformanceReview({ ...data, id: created.id }); } catch (_) {}
+      try { await this.fallback.createPerformanceReview({ ...data, id: created.id }); } catch (_) { }
       const rp: any = created.reviewPeriod || {};
       return {
         id: created.id,
@@ -6118,7 +6139,22 @@ async getLeave(id: string): Promise<any | undefined> {
       if (data.improvementAreas !== undefined) updateValues.improvementAreas = data.improvementAreas;
       if (data.reviewerComments !== undefined) updateValues.reviewerComments = data.reviewerComments;
       if (data.employeeComments !== undefined) updateValues.employeeComments = data.employeeComments;
-      if (data.reviewedBy !== undefined) updateValues.reviewedBy = data.reviewedBy;
+      if (data.reviewedBy !== undefined) {
+        updateValues.reviewedBy = data.reviewedBy;
+        if (data.reviewedBy) {
+          const [revOtherTenant] = await pgDb
+            .select({ id: pgUsers.id })
+            .from(pgUsers)
+            .where(and(
+              or(eq(pgUsers.id, data.reviewedBy), eq(pgUsers.firebaseUid, data.reviewedBy)),
+              ne(pgUsers.tenantId, tenantId)
+            ))
+            .limit(1);
+          if (revOtherTenant) {
+            throw new Error("Unauthorized: Reviewer belongs to another tenant");
+          }
+        }
+      }
       if (data.nextReviewDate !== undefined) updateValues.nextReviewDate = data.nextReviewDate ? new Date(data.nextReviewDate) : null;
 
       const [updated] = await pgDb.update(pgPerformanceReviews)
@@ -6141,7 +6177,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Performance review belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updatePerformanceReview(id, data); } catch (_) {}
+        try { await this.fallback.updatePerformanceReview(id, data); } catch (_) { }
         const rp: any = updated.reviewPeriod || {};
         return {
           id: updated.id,
@@ -6186,7 +6222,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgPerformanceReviews.id });
 
       if (deleted) {
-        try { await this.fallback.deletePerformanceReview(id); } catch (_) {}
+        try { await this.fallback.deletePerformanceReview(id); } catch (_) { }
         return true;
       }
 
@@ -6323,7 +6359,7 @@ async getLeave(id: string): Promise<any | undefined> {
         permissions: data.permissions || []
       }).returning();
 
-      try { await this.fallback.createDesignation(data); } catch (_) {}
+      try { await this.fallback.createDesignation(data); } catch (_) { }
       return {
         id: created.id,
         name: created.name as any,
@@ -6362,7 +6398,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Designation belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateDesignation(id, data); } catch (_) {}
+        try { await this.fallback.updateDesignation(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name as any,
@@ -6394,7 +6430,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgDesignations.id });
 
       if (deleted) {
-        try { await (this.fallback as any)?.deleteDesignation?.(id); } catch (_) {}
+        try { await (this.fallback as any)?.deleteDesignation?.(id); } catch (_) { }
         return true;
       }
 
@@ -6520,7 +6556,7 @@ async getLeave(id: string): Promise<any | undefined> {
         maxApprovalAmount: data.maxApprovalAmount != null ? String(data.maxApprovalAmount) : null
       }).returning();
 
-      try { await this.fallback.createPermissionGroup(data); } catch (_) {}
+      try { await this.fallback.createPermissionGroup(data); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -6563,7 +6599,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Permission group belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updatePermissionGroup(id, data); } catch (_) {}
+        try { await this.fallback.updatePermissionGroup(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name,
@@ -6593,7 +6629,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgPermissionGroups.id });
 
       if (deleted) {
-        try { await (this.fallback as any)?.deletePermissionGroup?.(id); } catch (_) {}
+        try { await (this.fallback as any)?.deletePermissionGroup?.(id); } catch (_) { }
         return true;
       }
 
@@ -6758,7 +6794,7 @@ async getLeave(id: string): Promise<any | undefined> {
         approvalLimits: data.approvalLimits || null
       }).returning();
 
-      try { await this.fallback.createRole(data); } catch (_) {}
+      try { await this.fallback.createRole(data); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -6802,7 +6838,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Role belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateRole(id, data); } catch (_) {}
+        try { await this.fallback.updateRole(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name,
@@ -6831,7 +6867,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [deleted] = await pgDb.delete(pgRoles).where(and(eq(pgRoles.tenantId, tenantId), eq(pgRoles.id, id))).returning({ id: pgRoles.id });
 
       if (deleted) {
-        try { await this.fallback.deleteRole(id); } catch (_) {}
+        try { await this.fallback.deleteRole(id); } catch (_) { }
         return true;
       }
 
@@ -6945,7 +6981,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive !== undefined ? data.isActive : true
       }).returning();
 
-      try { await this.fallback.assignUserRole(data); } catch (_) {}
+      try { await this.fallback.assignUserRole(data); } catch (_) { }
       return {
         id: created.id,
         userId: created.userId,
@@ -6975,7 +7011,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgUserRoleAssignments.id });
 
       if (updated) {
-        try { await this.fallback.revokeUserRole(userId, roleId); } catch (_) {}
+        try { await this.fallback.revokeUserRole(userId, roleId); } catch (_) { }
         return true;
       }
 
@@ -7055,7 +7091,7 @@ async getLeave(id: string): Promise<any | undefined> {
         effectiveTo: data.effectiveTo ? new Date(data.effectiveTo) : null
       }).returning();
 
-      try { await this.fallback.createPermissionOverride(data); } catch (_) {}
+      try { await this.fallback.createPermissionOverride(data); } catch (_) { }
       return {
         id: created.id,
         userId: created.userId,
@@ -7084,7 +7120,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgPermissionOverrides.id });
 
       if (deleted) {
-        try { await this.fallback.revokePermissionOverride(id); } catch (_) {}
+        try { await this.fallback.revokePermissionOverride(id); } catch (_) { }
         return true;
       }
 
@@ -7259,7 +7295,7 @@ async getLeave(id: string): Promise<any | undefined> {
         createdBy: data.createdBy || "system"
       }).returning();
 
-      try { await this.fallback.createAttendancePolicy(data); } catch (_) {}
+      try { await this.fallback.createAttendancePolicy(data); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7323,7 +7359,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Attendance policy belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updateAttendancePolicy(id, data); } catch (_) {}
+        try { await this.fallback.updateAttendancePolicy(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name,
@@ -7450,7 +7486,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive !== undefined ? data.isActive : true
       }).returning();
 
-      try { await this.fallback.createPayrollFieldConfig({ ...data, id: created.id }); } catch (_) {}
+      try { await this.fallback.createPayrollFieldConfig({ ...data, id: created.id }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7504,7 +7540,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Payroll field config belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updatePayrollFieldConfig(id, data); } catch (_) {}
+        try { await this.fallback.updatePayrollFieldConfig(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name,
@@ -7541,7 +7577,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgPayrollFieldConfigs.id });
 
       if (deleted) {
-        try { await (this.fallback as any)?.deletePayrollFieldConfig?.(id); } catch (_) {}
+        try { await (this.fallback as any)?.deletePayrollFieldConfig?.(id); } catch (_) { }
         return true;
       }
 
@@ -7657,7 +7693,7 @@ async getLeave(id: string): Promise<any | undefined> {
         isActive: data.isActive !== undefined ? data.isActive : true,
       }).returning();
 
-      try { await (this.fallback as any)?.createDepartment?.(data); } catch (_) {}
+      try { await (this.fallback as any)?.createDepartment?.(data); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7719,7 +7755,7 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Department belongs to another tenant");
         }
       } else {
-        try { await (this.fallback as any)?.updateDepartment?.(id, data); } catch (_) {}
+        try { await (this.fallback as any)?.updateDepartment?.(id, data); } catch (_) { }
         return {
           id: updated.id,
           name: updated.name,
@@ -7756,7 +7792,7 @@ async getLeave(id: string): Promise<any | undefined> {
         .returning({ id: pgDepartments.id });
 
       if (deleted) {
-        try { await (this.fallback as any)?.deleteDepartment?.(id); } catch (_) {}
+        try { await (this.fallback as any)?.deleteDepartment?.(id); } catch (_) { }
         return true;
       }
 

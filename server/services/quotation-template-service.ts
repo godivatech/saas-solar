@@ -5,6 +5,7 @@
 
 import { Quotation, QuotationProject } from "@shared/schema";
 import { calculateSystemKW as sharedCalculateSystemKW, roundSystemKW, formatKWForDisplay as sharedFormatKWForDisplay } from "@shared/utils";
+import { getISTDateString } from "../utils/timezone-helpers";
 
 const batteryBrandDisplayMap: Record<string, string> = {
   'exide': 'Exide',
@@ -509,7 +510,7 @@ export class QuotationTemplateService {
    */
   static generateQuotationNumber(): string {
     const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const month = getISTDateString(now).split('-')[1];
     const sequence = Math.floor(Math.random() * 9999) + 1000; // Random 4-digit number
     return `Q-${month}-${sequence}`;
   }

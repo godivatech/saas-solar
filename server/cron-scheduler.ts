@@ -3,6 +3,7 @@ import { AutoCheckoutService } from './services/auto-checkout-service';
 import { OTAutoCloseService } from './services/ot-auto-close-cron';
 import { SiteVisitAutoCloseService } from './services/site-visit-auto-close-service';
 import { LeaveBalanceService } from './services/leave-balance-service';
+import { getISTDateString } from './utils/timezone-helpers';
 
 /**
  * Initialize all scheduled cron jobs
@@ -91,8 +92,9 @@ export function initializeCronJobs() {
         .then(() => console.log('[CRON] ✅ Startup OT check completed - any forgotten sessions have been processed'))
         .catch(error => console.error('[CRON] ⚠️ Startup OT check failed:', error));
 
-    // ✅ RELIABILITY FIX: Catch-up check for monthly leave reset on server startup
-    if (new Date().getDate() === 1) {
+    // ✅ RELIABILITY FIX: Catch-up check for monthly leave reset on server startup (IST-safe)
+    const [, , startupDay] = getISTDateString(new Date()).split('-').map(Number);
+    if (startupDay === 1) {
         console.log('[CRON] 1st of the month detected on startup - running monthly leave reset check...');
         LeaveBalanceService.processMonthlyResetAllTenants()
             .then(() => console.log('[CRON] ✅ Startup monthly leave reset check completed'))

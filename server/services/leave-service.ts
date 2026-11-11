@@ -1,7 +1,7 @@
 import { IStorage } from "../storage";
 import { InsertLeaveApplication, LeaveApplication, FIXED_ANNUAL_HOLIDAYS } from "@shared/schema";
 import { PayrollHelper } from "./payroll-helper";
-import { getUTCMidnight, getUTCEndOfDay } from "../utils/timezone-helpers";
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTDayOfWeek } from "../utils/timezone-helpers";
 
 export class LeaveService {
   constructor(private storage: IStorage) { }
@@ -111,14 +111,11 @@ export class LeaveService {
   }
 
   async isHoliday(date: Date): Promise<boolean> {
-    const holidays = await this.storage.listFixedHolidays(date.getFullYear());
+    const year = Number(getISTDateString(date).split('-')[0]);
+    const holidays = await this.storage.listFixedHolidays(year);
     return holidays.some(holiday => {
       const holidayDate = new Date(holiday.date);
-      return (
-        holidayDate.getDate() === date.getDate() &&
-        holidayDate.getMonth() === date.getMonth() &&
-        holidayDate.getFullYear() === date.getFullYear()
-      );
+      return getISTDateString(holidayDate) === getISTDateString(date);
     });
   }
 
@@ -127,7 +124,7 @@ export class LeaveService {
       const { CompanySettingsService } = await import("./company-settings-service");
       return await CompanySettingsService.isWeekend(date);
     } catch (_) {
-      return date.getDay() === 0;
+      return getISTDayOfWeek(date) === 0;
     }
   }
 
@@ -232,7 +229,8 @@ export class LeaveService {
 
     const monthLeaves = leaves.filter(leave => {
       const appDate = new Date(leave.applicationDate || leave.createdAt);
-      return appDate.getMonth() + 1 === month && appDate.getFullYear() === year;
+      const [appYear, appMonth] = getISTDateString(appDate).split('-').map(Number);
+      return appMonth === month && appYear === year;
     });
 
     return {

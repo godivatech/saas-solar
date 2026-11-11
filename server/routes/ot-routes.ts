@@ -10,7 +10,7 @@ import { CompanySettingsService } from '../services/company-settings-service';
 import { PayrollLockService } from '../services/payroll-lock-service';
 import { auth } from '../firebase';
 import { storage } from '../storage';
-import { getUTCMidnight } from '../utils/timezone-helpers';
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString } from '../utils/timezone-helpers';
 import { runWithTenant } from '../tenant-context';
 
 const router = Router();
@@ -697,10 +697,10 @@ router.get('/sessions/active/all', verifyAuth, requireAdmin, async (req: any, re
     try {
         const department = req.query.department as string | undefined;
 
-        // Get today's attendance records
+        // Get today's attendance records (IST-safe UTC midnight range)
         const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+        const startOfDay = getUTCMidnight(today);
+        const endOfDay = getUTCEndOfDay(today);
 
         // Get attendance records for today
         const records = await storage.listAttendanceBetweenDates(startOfDay, endOfDay);
@@ -822,10 +822,9 @@ router.post('/sessions/:sessionId/review', verifyAuth, requireAdmin, async (req:
 
         const session = sessions[sessionIndex];
 
-        // SECURITY CHECK: Ensure payroll period is not locked
+        // SECURITY CHECK: Ensure payroll period is not locked (IST-safe)
         const sessionDate = new Date(session.startTime);
-        const month = sessionDate.getMonth() + 1;
-        const year = sessionDate.getFullYear();
+        const [year, month] = getISTDateString(sessionDate).split('-').map(Number);
 
         const payrollPeriod = await storage.getPayrollPeriod(month, year);
         if (payrollPeriod && payrollPeriod.status === 'locked') {
@@ -940,9 +939,11 @@ router.get('/reports', verifyAuth, requireAdmin, async (req: any, res) => {
     try {
         const { startDate, endDate, userId, department } = req.query;
 
-        // Parse and validate dates
-        const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        const end = endDate ? new Date(endDate as string) : new Date();
+        // Parse and validate dates (IST-safe UTC midnight range)
+        const today = new Date();
+        const [todayYear, todayMonth] = getISTDateString(today).split('-').map(Number);
+        const start = startDate ? getUTCMidnight(new Date(startDate as string)) : getUTCMidnight(new Date(Date.UTC(todayYear, todayMonth - 1, 1)));
+        const end = endDate ? getUTCEndOfDay(new Date(endDate as string)) : getUTCEndOfDay(today);
 
         // Validate date range
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {

@@ -5,6 +5,7 @@
 
 import { v2 as cloudinary } from 'cloudinary';
 import { getActiveTenantId } from '../tenant-context';
+import { getISTDateString } from '../utils/timezone-helpers';
 
 // Configure Cloudinary
 cloudinary.config({
@@ -57,7 +58,7 @@ export class CloudinaryService {
   ): Promise<CloudinaryUploadResult> {
     try {
       const timestamp = new Date();
-      const dateStr = timestamp.toISOString().split('T')[0];
+      const dateStr = getISTDateString(timestamp);
       const folder = this.getEmployeePhotoFolder();
       const publicId = `${folder}/${employeeId}_${dateStr}`;
 
@@ -106,7 +107,7 @@ export class CloudinaryService {
   ): Promise<CloudinaryUploadResult> {
     try {
       const timestamp = new Date();
-      const dateStr = timestamp.toISOString().split('T')[0];
+      const dateStr = getISTDateString(timestamp);
       const folder = this.getAadharFolder();
       const publicId = `${folder}/${employeeId}_${dateStr}`;
 
@@ -155,7 +156,7 @@ export class CloudinaryService {
   ): Promise<CloudinaryUploadResult> {
     try {
       const timestamp = new Date();
-      const dateStr = timestamp.toISOString().split('T')[0];
+      const dateStr = getISTDateString(timestamp);
       const folder = this.getPanFolder();
       const publicId = `${folder}/${employeeId}_${dateStr}`;
 
@@ -204,8 +205,8 @@ export class CloudinaryService {
     timestamp: Date = new Date()
   ): Promise<CloudinaryUploadResult> {
     try {
-      // Generate unique filename
-      const dateStr = timestamp.toISOString().split('T')[0];
+      // Generate unique filename (IST-safe date tag)
+      const dateStr = getISTDateString(timestamp);
       const timeStr = timestamp.toTimeString().split(' ')[0].replace(/:/g, '-');
       const folder = this.getAttendancePhotoFolder();
       const publicId = `${folder}/${userId}_${dateStr}_${timeStr}`;

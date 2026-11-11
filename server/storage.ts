@@ -11,7 +11,8 @@ import {
   Filter
 } from "firebase-admin/firestore";
 import { z } from "zod";
-import { getUTCMidnight, getUTCEndOfDay } from "./utils/timezone-helpers";
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTDayOfWeek } from "./utils/timezone-helpers";
+import { getActiveTenantId } from "./tenant-context";
 import {
   insertAttendanceSchema,
   insertOfficeLocationSchema,
@@ -2729,7 +2730,8 @@ export class FirestoreStorage implements IStorage {
 
   async getCurrentLeaveBalance(userId: string): Promise<LeaveBalance | undefined> {
     const now = new Date();
-    return this.getLeaveBalance(userId, now.getMonth() + 1, now.getFullYear());
+    const [year, month] = getISTDateString(now).split('-').map(Number);
+    return this.getLeaveBalance(userId, month, year);
   }
 
   async createLeaveBalance(data: z.infer<typeof insertLeaveBalanceSchema>): Promise<LeaveBalance> {
@@ -3194,12 +3196,13 @@ export class FirestoreStorage implements IStorage {
       } as LeaveApplication;
     });
 
-    // Filter by month/year if provided
+    // Filter by month/year if provided (IST-safe)
     if (filters?.month && filters?.year) {
       results = results.filter((leave: any) => {
         const date = leave.startDate || leave.permissionDate;
         if (date) {
-          return date.getMonth() + 1 === filters.month && date.getFullYear() === filters.year;
+          const [rYear, rMonth] = getISTDateString(new Date(date)).split('-').map(Number);
+          return rMonth === filters.month && rYear === filters.year;
         }
         return false;
       });
@@ -4526,10 +4529,10 @@ export class FirestoreStorage implements IStorage {
       endDate: endStr
     });
 
-    // Calculate working days (excluding weekends)
+    // Calculate working days (excluding weekends, IST-safe)
     let workingDays = 0;
     for (let day = 1; day <= lastDay; day++) {
-      const dayOfWeek = new Date(year, month - 1, day).getDay();
+      const dayOfWeek = getISTDayOfWeek(new Date(Date.UTC(year, month - 1, day, 6, 0, 0)));
       if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday or Saturday
         workingDays++;
       }
@@ -5135,6 +5138,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('reviewPeriod.endDate', 'desc')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5148,7 +5152,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as PerformanceReview;
-      });
+      }).filter((pr: any) => !activeTenantId || !pr.tenantId || pr.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employee performance reviews:", error);
       return [];
@@ -5162,6 +5166,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('reviewPeriod.endDate', 'desc')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5175,7 +5180,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as PerformanceReview;
-      });
+      }).filter((pr: any) => !activeTenantId || !pr.tenantId || pr.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting performance reviews by reviewer:", error);
       return [];
@@ -5193,6 +5198,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('nextReviewDate')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5206,7 +5212,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as PerformanceReview;
-      });
+      }).filter((pr: any) => !activeTenantId || !pr.tenantId || pr.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting upcoming performance reviews:", error);
       return [];

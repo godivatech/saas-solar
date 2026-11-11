@@ -10,7 +10,8 @@
  */
 
 import { storage } from '../storage';
-import { getUTCMidnight, getUTCEndOfDay } from '../utils/timezone-helpers';
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTDayOfWeek } from '../utils/timezone-helpers';
+import { CompanySettingsService } from './company-settings-service';
 import type {
     OTSession,
     StartOTSessionRequest,
@@ -162,7 +163,7 @@ export class OTSessionService {
             // IMPORTANT: Do NOT mark as 'present' - this is OT-only (no regular check-in yet)
             if (!attendance) {
                 console.log('[OT-SESSION] No attendance found - auto-creating for early arrival/weekend OT');
-                const isWeekendDay = today.getDay() === 0; // Sunday or configured weekly off
+                const isWeekendDay = await CompanySettingsService.isWeekend(today);
                 const initialStatus = isWeekendDay ? ('overtime' as const) : ('absent' as const);
 
                 const newAttendanceData = {
@@ -538,8 +539,7 @@ export class OTSessionService {
      */
     private static async checkPayrollLocked(date: Date): Promise<boolean> {
         try {
-            const month = date.getMonth() + 1;
-            const year = date.getFullYear();
+            const [year, month] = getISTDateString(date).split('-').map(Number);
 
             const period = await storage.getPayrollPeriod(month, year);
             return period && period.status === 'locked';

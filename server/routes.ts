@@ -58,7 +58,7 @@ import { LeaveService } from './services/leave-service';
 import { LeaveBalanceService } from './services/leave-balance-service';
 import { HolidayService } from './services/holiday-service';
 import { AdvancedQuotationService } from './services/quotation-service';
-import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTTodayAsUTC } from './utils/timezone-helpers';
+import { getUTCMidnight, getUTCEndOfDay, getISTDateString, getISTTodayAsUTC, getISTDayOfWeek } from './utils/timezone-helpers';
 
 /**
  * Helper function to merge a date with a time string
@@ -5299,8 +5299,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const balance = await storage.getCurrentLeaveBalance(user.id);
       if (!balance) {
-        // Initialize balance for current month if doesn't exist
+        // Initialize balance for current month if doesn't exist (IST-safe)
         const now = new Date();
+        const [nowYear, nowMonth] = getISTDateString(now).split('-').map(Number);
         await storage.createLeaveBalance({
           userId: user.id,
           employeeId: user.employeeId || user.id,
@@ -5308,8 +5309,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           permissionHoursBalance: 2,
           casualLeaveUsed: 0,
           permissionHoursUsed: 0,
-          year: now.getFullYear(),
-          month: now.getMonth() + 1,
+          year: nowYear,
+          month: nowMonth,
           casualLeaveHistory: [],
           permissionHistory: [],
           lastResetDate: now,
@@ -5766,7 +5767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (month) {
         const monthNum = parseInt(month as string);
         if (!isNaN(monthNum)) {
-          holidays = holidays.filter(h => new Date(h.date).getMonth() + 1 === monthNum);
+          holidays = holidays.filter(h => Number(getISTDateString(new Date(h.date)).split('-')[1]) === monthNum);
         }
       }
       res.json({ success: true, holidays });
@@ -6962,7 +6963,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      console.log('🚨🚨🚨 [TIMING-ROUTE] ROUTE HIT! Department:', department, 'Day of week:', new Date().getDay());
+      console.log('🚨🚨🚨 [TIMING-ROUTE] ROUTE HIT! Department:', department, 'Day of week:', getISTDayOfWeek(new Date()));
 
       const { AttendanceCacheService } = await import("./services/attendance-cache-service");
 
@@ -6984,7 +6985,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isHoliday,
         holidayName: holiday?.name,
         isWeekend,
-        dayOfWeek: now.getDay()
+        dayOfWeek: getISTDayOfWeek(now)
       });
 
       const enrichedResponse = {
@@ -7333,8 +7334,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // P1.3: Check for pending review records in this period
       const pendingRecords = await storage.listAttendanceByReviewStatus('pending');
       const periodPending = pendingRecords.filter(r => {
-        const recordDate = new Date(r.date);
-        return recordDate.getMonth() + 1 === month && recordDate.getFullYear() === year;
+        const [rYear, rMonth] = getISTDateString(new Date(r.date)).split('-').map(Number);
+        return rMonth === month && rYear === year;
       });
 
       if (periodPending.length > 0 && !req.body.forceProceed) {
@@ -7410,10 +7411,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             attendanceRecords = await storage.listAttendanceByUser(employee.uid);
           }
 
-          // Filter attendance records for the specified month/year
+          // Filter attendance records for the specified month/year (IST-safe)
           const monthAttendance = attendanceRecords.filter(record => {
-            const recordDate = new Date(record.date);
-            return recordDate.getMonth() + 1 === month && recordDate.getFullYear() === year;
+            const [rYear, rMonth] = getISTDateString(new Date(record.date)).split('-').map(Number);
+            return rMonth === month && rYear === year;
           });
 
           console.log(`PAYROLL_BULK: ${employee.displayName} - ${monthAttendance.length} attendance records`);
