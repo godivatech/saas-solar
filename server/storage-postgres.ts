@@ -67,6 +67,7 @@ import {
 } from "@shared/schema.postgres";
 import { eq, or, ilike, and, desc, sql, gte, lte, inArray, ne } from "drizzle-orm";
 import { getActiveTenantId } from "./tenant-context";
+import { getISTDateString } from "./utils/timezone-helpers";
 
 /**
  * Enterprise PostgreSQL Storage Layer
@@ -1351,7 +1352,7 @@ export class PostgresStorage implements IStorage {
           const [otherTenantInv] = await tx
             .select({ id: pgInvoices.id })
             .from(pgInvoices)
-            .where(eq(pgInvoices.id, data.invoiceId))
+            .where(and(eq(pgInvoices.id, data.invoiceId), ne(pgInvoices.tenantId, tenantId)))
             .limit(1);
           if (otherTenantInv) {
             throw new Error("Unauthorized: Invoice belongs to another tenant");
@@ -3330,7 +3331,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherTenantP] = await pgDb
         .select({ id: pgPayrolls.id })
         .from(pgPayrolls)
-        .where(eq(pgPayrolls.id, id))
+        .where(and(eq(pgPayrolls.id, id), ne(pgPayrolls.tenantId, tenantId)))
         .limit(1);
       if (otherTenantP) {
         return undefined;
@@ -3447,7 +3448,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherTenantP] = await pgDb
           .select({ id: pgPayrolls.id })
           .from(pgPayrolls)
-          .where(eq(pgPayrolls.id, id))
+          .where(and(eq(pgPayrolls.id, id), ne(pgPayrolls.tenantId, tenantId)))
           .limit(1);
         if (otherTenantP) {
           throw new Error("Unauthorized: Payroll belongs to another tenant");
@@ -4087,6 +4088,21 @@ async getLeave(id: string): Promise<any | undefined> {
   async createNotification(data: any): Promise<any> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure target user belongs to this tenant
+      if (data.userId) {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.userId), eq(pgUsers.firebaseUid, data.userId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          throw new Error("Unauthorized: Target user belongs to another tenant");
+        }
+      }
+
       const [n] = await pgDb.insert(pgNotifications).values({
         tenantId,
         userId: data.userId,
@@ -4099,6 +4115,9 @@ async getLeave(id: string): Promise<any | undefined> {
       try { await this.fallback.createNotification(data); } catch (_) {}
       return n;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createNotification error:", e);
       return this.fallback.createNotification(data);
     }
@@ -4107,6 +4126,19 @@ async getLeave(id: string): Promise<any | undefined> {
   async getNotifications(userId: string): Promise<any[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure user belongs to this tenant
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb
         .select()
         .from(pgNotifications)
@@ -4137,9 +4169,27 @@ async getLeave(id: string): Promise<any | undefined> {
           )
         )
         .returning();
+
+      if (!n) {
+        const [otherTenantNotif] = await pgDb
+          .select({ id: pgNotifications.id })
+          .from(pgNotifications)
+          .where(and(
+            eq(pgNotifications.id, id),
+            ne(pgNotifications.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (otherTenantNotif) {
+          throw new Error("Unauthorized: Notification belongs to another tenant");
+        }
+      }
+
       try { await this.fallback.updateNotification(id, updates); } catch (_) {}
       return n;
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] updateNotification error:", e);
       return this.fallback.updateNotification(id, updates);
     }
@@ -4749,14 +4799,9 @@ async getLeave(id: string): Promise<any | undefined> {
           )
         );
 
-      const targetUtcStr = date.toISOString().split('T')[0];
-      const targetLocalStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
+      const targetIstStr = getISTDateString(date);
       const matched = rows.filter(h => {
-        const hDate = new Date(h.date);
-        const hUtcStr = hDate.toISOString().split('T')[0];
-        const hLocalStr = `${hDate.getFullYear()}-${String(hDate.getMonth() + 1).padStart(2, '0')}-${String(hDate.getDate()).padStart(2, '0')}`;
-        return hUtcStr === targetUtcStr || hLocalStr === targetLocalStr || hUtcStr === targetLocalStr || hLocalStr === targetUtcStr;
+        return getISTDateString(new Date(h.date)) === targetIstStr;
       });
 
       return matched.map(h => this.mapFixedHoliday(h));
@@ -4769,6 +4814,17 @@ async getLeave(id: string): Promise<any | undefined> {
   async getHolidaysByDateRange(startDate: Date, endDate: Date): Promise<any[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure inclusive end-of-day coverage: if endDate is at 00:00:00.000, expand to 23:59:59.999
+      const safeEndDate = new Date(endDate);
+      if (
+        safeEndDate.getHours() === 0 &&
+        safeEndDate.getMinutes() === 0 &&
+        safeEndDate.getSeconds() === 0 &&
+        safeEndDate.getMilliseconds() === 0
+      ) {
+        safeEndDate.setHours(23, 59, 59, 999);
+      }
+
       const rows = await pgDb
         .select()
         .from(pgFixedHolidays)
@@ -4777,7 +4833,7 @@ async getLeave(id: string): Promise<any | undefined> {
             eq(pgFixedHolidays.tenantId, tenantId),
             eq(pgFixedHolidays.isActive, true),
             gte(pgFixedHolidays.date, startDate),
-            lte(pgFixedHolidays.date, endDate)
+            lte(pgFixedHolidays.date, safeEndDate)
           )
         )
         .orderBy(pgFixedHolidays.date);
@@ -5368,7 +5424,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDoc] = await pgDb
         .select({ id: pgEmployeeDocuments.id })
         .from(pgEmployeeDocuments)
-        .where(eq(pgEmployeeDocuments.id, id))
+        .where(and(eq(pgEmployeeDocuments.id, id), ne(pgEmployeeDocuments.tenantId, tenantId)))
         .limit(1);
       if (otherDoc) {
         return undefined;
@@ -5382,6 +5438,32 @@ async getLeave(id: string): Promise<any | undefined> {
   async getEmployeeDocuments(employeeId: string): Promise<EmployeeDocument[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if employee belongs to another tenant in users table
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, employeeId), eq(pgUsers.firebaseUid, employeeId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
+      // Check if employee belongs to another tenant in employees table
+      const [empOtherTenant] = await pgDb
+        .select({ id: pgEmployees.id })
+        .from(pgEmployees)
+        .where(and(
+          or(eq(pgEmployees.id, employeeId), eq(pgEmployees.employeeId, employeeId), eq(pgEmployees.systemUserId, employeeId)),
+          ne(pgEmployees.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (empOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgEmployeeDocuments)
         .where(
           and(
@@ -5415,6 +5497,32 @@ async getLeave(id: string): Promise<any | undefined> {
   async getEmployeeDocumentsByType(employeeId: string, documentType: string): Promise<EmployeeDocument[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if employee belongs to another tenant in users table
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, employeeId), eq(pgUsers.firebaseUid, employeeId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
+      // Check if employee belongs to another tenant in employees table
+      const [empOtherTenant] = await pgDb
+        .select({ id: pgEmployees.id })
+        .from(pgEmployees)
+        .where(and(
+          or(eq(pgEmployees.id, employeeId), eq(pgEmployees.employeeId, employeeId), eq(pgEmployees.systemUserId, employeeId)),
+          ne(pgEmployees.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (empOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgEmployeeDocuments)
         .where(
           and(
@@ -5449,6 +5557,33 @@ async getLeave(id: string): Promise<any | undefined> {
   async createEmployeeDocument(data: any): Promise<EmployeeDocument> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure target employee belongs to this tenant
+      if (data.employeeId) {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.employeeId), eq(pgUsers.firebaseUid, data.employeeId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          throw new Error("Unauthorized: Employee belongs to another tenant");
+        }
+
+        const [empOtherTenant] = await pgDb
+          .select({ id: pgEmployees.id })
+          .from(pgEmployees)
+          .where(and(
+            or(eq(pgEmployees.id, data.employeeId), eq(pgEmployees.employeeId, data.employeeId), eq(pgEmployees.systemUserId, data.employeeId)),
+            ne(pgEmployees.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (empOtherTenant) {
+          throw new Error("Unauthorized: Employee belongs to another tenant");
+        }
+      }
+
       const [created] = await pgDb.insert(pgEmployeeDocuments).values({
         tenantId,
         employeeId: data.employeeId,
@@ -5482,6 +5617,9 @@ async getLeave(id: string): Promise<any | undefined> {
         updatedAt: created.updatedAt || new Date()
       };
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createEmployeeDocument error:", e);
       return this.fallback.createEmployeeDocument(data);
     }
@@ -5515,7 +5653,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherDoc] = await pgDb
           .select({ id: pgEmployeeDocuments.id })
           .from(pgEmployeeDocuments)
-          .where(eq(pgEmployeeDocuments.id, id))
+          .where(and(eq(pgEmployeeDocuments.id, id), ne(pgEmployeeDocuments.tenantId, tenantId)))
           .limit(1);
         if (otherDoc) {
           throw new Error("Unauthorized: Employee document belongs to another tenant");
@@ -5569,7 +5707,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDoc] = await pgDb
         .select({ id: pgEmployeeDocuments.id })
         .from(pgEmployeeDocuments)
-        .where(eq(pgEmployeeDocuments.id, id))
+        .where(and(eq(pgEmployeeDocuments.id, id), ne(pgEmployeeDocuments.tenantId, tenantId)))
         .limit(1);
       if (otherDoc) {
         throw new Error("Unauthorized: Employee document belongs to another tenant");
@@ -5631,7 +5769,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherPR] = await pgDb
         .select({ id: pgPerformanceReviews.id })
         .from(pgPerformanceReviews)
-        .where(eq(pgPerformanceReviews.id, id))
+        .where(and(eq(pgPerformanceReviews.id, id), ne(pgPerformanceReviews.tenantId, tenantId)))
         .limit(1);
       if (otherPR) {
         return undefined;
@@ -5649,6 +5787,31 @@ async getLeave(id: string): Promise<any | undefined> {
   async getEmployeePerformanceReviews(employeeId: string): Promise<PerformanceReview[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure target employee/user belongs to this tenant
+      const [userOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, employeeId), eq(pgUsers.firebaseUid, employeeId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (userOtherTenant) {
+        return [];
+      }
+
+      const [empOtherTenant] = await pgDb
+        .select({ id: pgEmployees.id })
+        .from(pgEmployees)
+        .where(and(
+          or(eq(pgEmployees.id, employeeId), eq(pgEmployees.employeeId, employeeId), eq(pgEmployees.systemUserId, employeeId)),
+          ne(pgEmployees.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (empOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgPerformanceReviews)
         .where(
           and(
@@ -5688,6 +5851,19 @@ async getLeave(id: string): Promise<any | undefined> {
   async getPerformanceReviewsByReviewer(reviewerId: string): Promise<PerformanceReview[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure reviewer belongs to this tenant
+      const [revOtherTenant] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, reviewerId), eq(pgUsers.firebaseUid, reviewerId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (revOtherTenant) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgPerformanceReviews)
         .where(
           and(
@@ -5769,6 +5945,33 @@ async getLeave(id: string): Promise<any | undefined> {
   async createPerformanceReview(data: any): Promise<PerformanceReview> {
     try {
       const tenantId = await this.getTenantId();
+      // Ensure target employee/user belongs to this tenant
+      if (data.employeeId) {
+        const [userOtherTenant] = await pgDb
+          .select({ id: pgUsers.id })
+          .from(pgUsers)
+          .where(and(
+            or(eq(pgUsers.id, data.employeeId), eq(pgUsers.firebaseUid, data.employeeId)),
+            ne(pgUsers.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (userOtherTenant) {
+          throw new Error("Unauthorized: Employee belongs to another tenant");
+        }
+
+        const [empOtherTenant] = await pgDb
+          .select({ id: pgEmployees.id })
+          .from(pgEmployees)
+          .where(and(
+            or(eq(pgEmployees.id, data.employeeId), eq(pgEmployees.employeeId, data.employeeId), eq(pgEmployees.systemUserId, data.employeeId)),
+            ne(pgEmployees.tenantId, tenantId)
+          ))
+          .limit(1);
+        if (empOtherTenant) {
+          throw new Error("Unauthorized: Employee belongs to another tenant");
+        }
+      }
+
       const [created] = await pgDb.insert(pgPerformanceReviews).values({
         tenantId,
         employeeId: data.employeeId,
@@ -5806,6 +6009,9 @@ async getLeave(id: string): Promise<any | undefined> {
         updatedAt: created.updatedAt || new Date()
       };
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] createPerformanceReview error:", e);
       return this.fallback.createPerformanceReview(data);
     }
@@ -5840,7 +6046,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherPR] = await pgDb
           .select({ id: pgPerformanceReviews.id })
           .from(pgPerformanceReviews)
-          .where(eq(pgPerformanceReviews.id, id))
+          .where(and(eq(pgPerformanceReviews.id, id), ne(pgPerformanceReviews.tenantId, tenantId)))
           .limit(1);
         if (otherPR) {
           throw new Error("Unauthorized: Performance review belongs to another tenant");
@@ -5898,7 +6104,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherPR] = await pgDb
         .select({ id: pgPerformanceReviews.id })
         .from(pgPerformanceReviews)
-        .where(eq(pgPerformanceReviews.id, id))
+        .where(and(eq(pgPerformanceReviews.id, id), ne(pgPerformanceReviews.tenantId, tenantId)))
         .limit(1);
       if (otherPR) {
         throw new Error("Unauthorized: Performance review belongs to another tenant");
@@ -6851,7 +7057,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       // Check if attendance policy exists under another tenant
       const [otherPolicy] = await pgDb.select({ id: pgAttendancePolicies.id }).from(pgAttendancePolicies)
-        .where(eq(pgAttendancePolicies.id, id))
+        .where(and(eq(pgAttendancePolicies.id, id), ne(pgAttendancePolicies.tenantId, tenantId)))
         .limit(1);
       if (otherPolicy) {
         return undefined;
@@ -7022,7 +7228,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       if (!updated) {
         const [otherPolicy] = await pgDb.select({ id: pgAttendancePolicies.id }).from(pgAttendancePolicies)
-          .where(eq(pgAttendancePolicies.id, id))
+          .where(and(eq(pgAttendancePolicies.id, id), ne(pgAttendancePolicies.tenantId, tenantId)))
           .limit(1);
         if (otherPolicy) {
           throw new Error("Unauthorized: Attendance policy belongs to another tenant");
@@ -7097,7 +7303,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherCfg] = await pgDb
         .select({ id: pgPayrollFieldConfigs.id })
         .from(pgPayrollFieldConfigs)
-        .where(eq(pgPayrollFieldConfigs.id, id))
+        .where(and(eq(pgPayrollFieldConfigs.id, id), ne(pgPayrollFieldConfigs.tenantId, tenantId)))
         .limit(1);
       if (otherCfg) {
         return undefined;
@@ -7203,7 +7409,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherCfg] = await pgDb
           .select({ id: pgPayrollFieldConfigs.id })
           .from(pgPayrollFieldConfigs)
-          .where(eq(pgPayrollFieldConfigs.id, id))
+          .where(and(eq(pgPayrollFieldConfigs.id, id), ne(pgPayrollFieldConfigs.tenantId, tenantId)))
           .limit(1);
         if (otherCfg) {
           throw new Error("Unauthorized: Payroll field config belongs to another tenant");
@@ -7253,12 +7459,15 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherCfg] = await pgDb
         .select({ id: pgPayrollFieldConfigs.id })
         .from(pgPayrollFieldConfigs)
-        .where(eq(pgPayrollFieldConfigs.id, id))
+        .where(and(eq(pgPayrollFieldConfigs.id, id), ne(pgPayrollFieldConfigs.tenantId, tenantId)))
         .limit(1);
       if (otherCfg) {
-        return false;
+        throw new Error("Unauthorized: Payroll field config belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deletePayrollFieldConfig error:", e);
       return (this.fallback as any)?.deletePayrollFieldConfig ? (this.fallback as any).deletePayrollFieldConfig(id) : false;
     }

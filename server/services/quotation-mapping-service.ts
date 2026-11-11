@@ -4,6 +4,7 @@
  */
 
 import { storage } from "../storage";
+import { getISTDateString } from "../utils/timezone-helpers";
 import {
   QuotationProject,
   SiteVisitMapping,
@@ -1088,7 +1089,7 @@ export class SiteVisitDataMapper {
     // === VISIT OVERVIEW ===
     notesSections.push("=== COMPREHENSIVE SITE VISIT DATA ===");
     notesSections.push(`Site Visit ID: ${siteVisit.id}`);
-    notesSections.push(`Visit Date: ${siteVisit.siteInTime ? siteVisit.siteInTime.toISOString().split('T')[0] : 'Unknown'}`);
+    notesSections.push(`Visit Date: ${siteVisit.siteInTime ? getISTDateString(siteVisit.siteInTime instanceof Date ? siteVisit.siteInTime : new Date(siteVisit.siteInTime)) : 'Unknown'}`);
     notesSections.push(`Department: ${siteVisit.department || 'Unknown'}`);
     notesSections.push(`Purpose: ${siteVisit.visitPurpose || 'Unknown'}`);
     notesSections.push(`Status: ${siteVisit.status || 'Unknown'}`);
@@ -1298,7 +1299,7 @@ export class SiteVisitDataMapper {
       notesSections.push(`Outcome Notes: ${siteVisit.outcomeNotes}`);
     }
     if (siteVisit.scheduledFollowUpDate) {
-      notesSections.push(`Scheduled Follow-up: ${siteVisit.scheduledFollowUpDate.toISOString().split('T')[0]}`);
+      notesSections.push(`Scheduled Follow-up: ${getISTDateString(siteVisit.scheduledFollowUpDate instanceof Date ? siteVisit.scheduledFollowUpDate : new Date(siteVisit.scheduledFollowUpDate))}`);
     }
 
     notesSections.push("\n=== END OF COMPREHENSIVE SITE VISIT DATA ===");

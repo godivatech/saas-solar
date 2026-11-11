@@ -8,7 +8,7 @@ import { CloudinaryService } from './cloudinary-service';
 import { EnterpriseTimeService } from './enterprise-time-service';
 import { LeaveService } from './leave-service';
 import { HolidayService } from './holiday-service';
-import { getUTCMidnight, isSameUTCDate, getISTTodayAsUTC } from '../utils/timezone-helpers';
+import { getUTCMidnight, isSameUTCDate, getISTTodayAsUTC, getISTDateString, getISTDayOfWeek } from '../utils/timezone-helpers';
 
 export interface AttendanceCheckInRequest {
   userId: string;
@@ -166,14 +166,14 @@ export class UnifiedAttendanceService {
 
       const recordsByDate = new Map();
       existingRecords.forEach(record => {
-        const dateStr = new Date(record.date).toISOString().split('T')[0];
+        const dateStr = getISTDateString(record.date instanceof Date ? record.date : new Date(record.date));
         recordsByDate.set(dateStr, record);
       });
 
       const enrichedRecords = [...existingRecords];
 
       for (const holiday of holidays) {
-        const holidayDateStr = new Date(holiday.date).toISOString().split('T')[0];
+        const holidayDateStr = getISTDateString(holiday.date instanceof Date ? holiday.date : new Date(holiday.date));
 
         if (!recordsByDate.has(holidayDateStr)) {
           enrichedRecords.push({
@@ -223,7 +223,7 @@ export class UnifiedAttendanceService {
 
       const recordsByDate = new Map();
       existingRecords.forEach(record => {
-        const dateStr = new Date(record.date).toISOString().split('T')[0];
+        const dateStr = getISTDateString(record.date instanceof Date ? record.date : new Date(record.date));
         recordsByDate.set(dateStr, record);
       });
 
@@ -232,8 +232,8 @@ export class UnifiedAttendanceService {
       // Iterate through all dates in the range
       const currentDate = new Date(startDate);
       while (currentDate <= endDate) {
-        const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dayOfWeek = getISTDayOfWeek(currentDate); // 0 = Sunday, 6 = Saturday (in IST)
+        const dateStr = getISTDateString(currentDate);
 
         // Check if this day is a configured weekly-off and no record exists
         if (weeklyOffDays.includes(dayOfWeek) && !recordsByDate.has(dateStr)) {

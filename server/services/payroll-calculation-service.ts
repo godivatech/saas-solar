@@ -1,6 +1,7 @@
 import { IStorage } from "../storage";
 import { LeaveService } from "./leave-service";
 import { PayrollHelper } from "./payroll-helper";
+import { getISTDateString } from "../utils/timezone-helpers";
 
 /**
  * Enterprise Payroll Calculation Service
@@ -351,10 +352,10 @@ export class PayrollCalculationService {
     const { HolidayService } = await import('./holiday-service');
     const monthlyHolidays = await HolidayService.getHolidaysForMonth(month, year);
 
-    // Create a map for O(1) holiday lookup by date string (YYYY-MM-DD)
+    // Create a map for O(1) holiday lookup by date string (YYYY-MM-DD in IST)
     const holidayMap = new Map();
     monthlyHolidays.forEach(h => {
-      const dateStr = new Date(h.date).toISOString().split('T')[0];
+      const dateStr = getISTDateString(h.date instanceof Date ? h.date : new Date(h.date));
       holidayMap.set(dateStr, h);
     });
 

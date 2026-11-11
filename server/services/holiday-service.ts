@@ -12,7 +12,7 @@
 
 import { storage } from '../storage';
 import type { Holiday } from '../types/ot-types';
-import { getUTCMidnight } from '../utils/timezone-helpers';
+import { getUTCMidnight, getISTDateString } from '../utils/timezone-helpers';
 import { getActiveTenantId } from '../tenant-context';
 
 export class HolidayService {
@@ -85,7 +85,7 @@ export class HolidayService {
 
             // Generate ID
             const tenantPrefix = getActiveTenantId() ? `${getActiveTenantId()}_` : '';
-            const dateStr = normalizedDate.toISOString().split('T')[0].replace(/-/g, '');
+            const dateStr = getISTDateString(normalizedDate).replace(/-/g, '');
             const id = `${tenantPrefix}holiday_${dateStr}`;
 
             // Create holiday
@@ -220,7 +220,7 @@ export class HolidayService {
     static async getHolidaysForYear(year: number): Promise<Holiday[]> {
         try {
             const startDate = new Date(year, 0, 1);
-            const endDate = new Date(year, 11, 31);
+            const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
 
             return await storage.getHolidaysByDateRange(startDate, endDate);
 
@@ -236,7 +236,7 @@ export class HolidayService {
     static async getHolidaysForMonth(month: number, year: number): Promise<Holiday[]> {
         try {
             const startDate = new Date(year, month - 1, 1);
-            const endDate = new Date(year, month, 0);
+            const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
             return await storage.getHolidaysByDateRange(startDate, endDate);
 

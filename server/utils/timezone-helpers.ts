@@ -18,15 +18,14 @@
 /**
  * Get UTC midnight (00:00:00.000) for a given date
  * 
- * ALWAYS returns midnight in UTC timezone, regardless of:
- * - Server's local timezone
- * - Input date's timezone
- * - Node.js TZ environment variable
+ * Calendar-safe conversion: converts the input date to IST calendar date
+ * and returns midnight in UTC (00:00:00.000Z), immune to server timezone
+ * and off-by-one day shifts for early-morning IST timestamps.
  * 
  * @example
- * // Input: IST 2026-01-03 15:30 (which is 10:00 UTC)
+ * // Input: IST 2026-01-03 01:30 (which is 2026-01-02 20:00 UTC)
  * // Output: 2026-01-03 00:00:00.000 UTC
- * const istDate = new Date('2026-01-03T15:30:00+05:30');
+ * const istDate = new Date('2026-01-03T01:30:00+05:30');
  * const utcMidnight = getUTCMidnight(istDate);
  * // utcMidnight.toISOString() === '2026-01-03T00:00:00.000Z'
  * 
@@ -34,18 +33,15 @@
  * @returns Date object set to 00:00:00.000 UTC on the same calendar date
  */
 export function getUTCMidnight(date: Date): Date {
-    return new Date(Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-        0, 0, 0, 0
-    ));
+    const istDateStr = getISTDateString(date);
+    return new Date(`${istDateStr}T00:00:00.000Z`);
 }
 
 /**
  * Get UTC end-of-day (23:59:59.999) for a given date
  * 
- * Useful for inclusive date range queries (e.g., "all records on 2026-01-03")
+ * Calendar-safe conversion: converts the input date to IST calendar date
+ * and returns end-of-day in UTC (23:59:59.999Z).
  * 
  * @example
  * const endOfDay = getUTCEndOfDay(new Date('2026-01-03'));
@@ -55,12 +51,8 @@ export function getUTCMidnight(date: Date): Date {
  * @returns Date object set to 23:59:59.999 UTC on the same calendar date
  */
 export function getUTCEndOfDay(date: Date): Date {
-    return new Date(Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-        23, 59, 59, 999
-    ));
+    const istDateStr = getISTDateString(date);
+    return new Date(`${istDateStr}T23:59:59.999Z`);
 }
 
 /**
@@ -129,16 +121,26 @@ export function getUTCDateRange(startDate: Date, endDate: Date): {
 }
 
 /**
- * Check if two dates are on the same calendar day (UTC comparison)
+ * Get day of week in IST (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+ * Immune to server timezone and DST.
+ * 
+ * @param date - Input date (any timezone)
+ * @returns 0 for Sunday, 1 for Monday, ..., 6 for Saturday in Indian Standard Time
+ */
+export function getISTDayOfWeek(date: Date): number {
+    const istDateStr = getISTDateString(date);
+    return new Date(`${istDateStr}T12:00:00.000Z`).getUTCDay();
+}
+
+/**
+ * Check if two dates represent the same calendar day in Indian Standard Time
  * 
  * @param date1 - First date
  * @param date2 - Second date
- * @returns true if both dates represent the same UTC calendar day
+ * @returns true if both dates represent the same calendar day in IST
  */
 export function isSameUTCDate(date1: Date, date2: Date): boolean {
-    return date1.getUTCFullYear() === date2.getUTCFullYear() &&
-        date1.getUTCMonth() === date2.getUTCMonth() &&
-        date1.getUTCDate() === date2.getUTCDate();
+    return getISTDateString(date1) === getISTDateString(date2);
 }
 
 /**
