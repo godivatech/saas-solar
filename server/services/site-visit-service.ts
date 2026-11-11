@@ -5,7 +5,7 @@
 
 import { db as pgDb } from "../db";
 import { siteVisits as pgSiteVisits, tenants } from "@shared/schema.postgres";
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, ne, and, desc, gte, lte, sql } from "drizzle-orm";
 import { db as firestoreDb } from "../firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -137,11 +137,11 @@ export class SiteVisitService {
         tenantId,
         userId: data.userId,
         department: data.department,
-        visitPurpose: data.visitPurpose,
+        visitPurpose: data.visitPurpose || "initial_survey",
         status: data.status || "in_progress",
-        siteInTime: data.siteInTime instanceof Date ? data.siteInTime : new Date(data.siteInTime),
+        siteInTime: data.siteInTime ? (data.siteInTime instanceof Date ? data.siteInTime : new Date(data.siteInTime)) : now,
         siteOutTime: data.siteOutTime ? (data.siteOutTime instanceof Date ? data.siteOutTime : new Date(data.siteOutTime)) : null,
-        customer: data.customer,
+        customer: data.customer || { id: data.customerId, name: data.customerName, phone: data.customerPhone, address: data.siteAddress },
         location: data.location || null,
         technicalData: data.technicalData || null,
         marketingData: data.marketingData || null,
@@ -255,7 +255,7 @@ export class SiteVisitService {
         const [otherTenantVisit] = await pgDb
           .select({ id: pgSiteVisits.id })
           .from(pgSiteVisits)
-          .where(eq(pgSiteVisits.id, id))
+          .where(and(eq(pgSiteVisits.id, id), ne(pgSiteVisits.tenantId, resolvedTenantId)))
           .limit(1);
         if (otherTenantVisit) {
           throw new Error("Unauthorized: Site visit belongs to another tenant");
@@ -322,7 +322,7 @@ export class SiteVisitService {
       const [otherTenantVisit] = await pgDb
         .select({ id: pgSiteVisits.id })
         .from(pgSiteVisits)
-        .where(eq(pgSiteVisits.id, id))
+        .where(and(eq(pgSiteVisits.id, id), ne(pgSiteVisits.tenantId, resolvedTenantId)))
         .limit(1);
       if (otherTenantVisit) {
         return null;
@@ -543,7 +543,7 @@ export class SiteVisitService {
         const [otherTenantVisit] = await pgDb
           .select({ id: pgSiteVisits.id })
           .from(pgSiteVisits)
-          .where(eq(pgSiteVisits.id, id))
+          .where(and(eq(pgSiteVisits.id, id), ne(pgSiteVisits.tenantId, resolvedTenantId)))
           .limit(1);
         if (otherTenantVisit) {
           throw new Error("Unauthorized: Site visit belongs to another tenant");

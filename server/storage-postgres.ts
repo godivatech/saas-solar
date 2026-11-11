@@ -645,7 +645,7 @@ export class PostgresStorage implements IStorage {
       const [otherTenantCustomer] = await pgDb
         .select({ id: pgCustomers.id })
         .from(pgCustomers)
-        .where(and(eq(pgCustomers.id, id), eq(pgCustomers.isDeleted, false)))
+        .where(and(eq(pgCustomers.id, id), ne(pgCustomers.tenantId, tenantId)))
         .limit(1);
 
       if (otherTenantCustomer) {
@@ -655,7 +655,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getCustomer error, delegating:", e);
     }
-    return this.fallback.getCustomer(id);
+    const fallbackCustomer = (this.fallback as any)?.getCustomer ? await (this.fallback as any).getCustomer(id) : undefined;
+    if (fallbackCustomer && fallbackCustomer.tenantId && fallbackCustomer.tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackCustomer;
   }
 
   async findCustomerByMobile(mobile: string): Promise<Customer | undefined> {
@@ -684,7 +688,8 @@ export class PostgresStorage implements IStorage {
         .where(
           and(
             eq(pgCustomers.mobile, mobile),
-            eq(pgCustomers.isDeleted, false)
+            eq(pgCustomers.isDeleted, false),
+            ne(pgCustomers.tenantId, tenantId)
           )
         )
         .limit(1);
@@ -696,7 +701,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] findCustomerByMobile error, delegating:", e);
     }
-    return (this.fallback as any).findCustomerByMobile ? (this.fallback as any).findCustomerByMobile(mobile) : undefined;
+    const fallbackCustomer = (this.fallback as any)?.findCustomerByMobile ? await (this.fallback as any).findCustomerByMobile(mobile) : undefined;
+    if (fallbackCustomer && fallbackCustomer.tenantId && fallbackCustomer.tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackCustomer;
   }
 
   async createCustomer(data: any): Promise<Customer> {
@@ -776,17 +785,24 @@ export class PostgresStorage implements IStorage {
       const [otherTenantCustomer] = await pgDb
         .select({ id: pgCustomers.id })
         .from(pgCustomers)
-        .where(eq(pgCustomers.id, id))
+        .where(and(eq(pgCustomers.id, id), ne(pgCustomers.tenantId, tenantId)))
         .limit(1);
 
       if (otherTenantCustomer) {
-        return undefined as any;
+        throw new Error(`Unauthorized: Customer ${id} belongs to another tenant`);
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] updateCustomer error, using fallback:", e);
       throw e;
     }
-    return this.fallback.updateCustomer(id, data);
+    const fallbackCustomer = (this.fallback as any)?.getCustomer ? await (this.fallback as any).getCustomer(id) : undefined;
+    if (fallbackCustomer && fallbackCustomer.tenantId && fallbackCustomer.tenantId !== (await this.getTenantId())) {
+      throw new Error(`Unauthorized: Customer ${id} belongs to another tenant`);
+    }
+    return (this.fallback as any)?.updateCustomer ? (this.fallback as any).updateCustomer(id, data) : undefined as any;
   }
 
   async deleteCustomer(id: string): Promise<void> {
@@ -804,10 +820,32 @@ export class PostgresStorage implements IStorage {
         .returning();
 
       if (deleted) {
-        try { await this.fallback.deleteCustomer(id); } catch (_) {}
+        try { await (this.fallback as any)?.deleteCustomer?.(id); } catch (_) {}
+        return;
+      }
+
+      const [otherTenantCustomer] = await pgDb
+        .select({ id: pgCustomers.id })
+        .from(pgCustomers)
+        .where(and(eq(pgCustomers.id, id), ne(pgCustomers.tenantId, tenantId)))
+        .limit(1);
+
+      if (otherTenantCustomer) {
+        throw new Error(`Unauthorized: Customer ${id} belongs to another tenant`);
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deleteCustomer error, using fallback:", e);
+      return;
+    }
+    const fallbackCustomer = (this.fallback as any)?.getCustomer ? await (this.fallback as any).getCustomer(id) : undefined;
+    if (fallbackCustomer && fallbackCustomer.tenantId && fallbackCustomer.tenantId !== (await this.getTenantId())) {
+      throw new Error(`Unauthorized: Customer ${id} belongs to another tenant`);
+    }
+    if ((this.fallback as any)?.deleteCustomer) {
+      await (this.fallback as any).deleteCustomer(id);
     }
   }
 
@@ -1491,7 +1529,17 @@ export class PostgresStorage implements IStorage {
         .from(pgProducts)
         .where(and(eq(pgProducts.id, id), eq(pgProducts.tenantId, tenantId)))
         .limit(1);
-      return p ? this.mapProduct(p) : undefined;
+      if (p) return this.mapProduct(p);
+
+      const [otherTenantProduct] = await pgDb
+        .select({ id: pgProducts.id })
+        .from(pgProducts)
+        .where(and(eq(pgProducts.id, id), ne(pgProducts.tenantId, tenantId)))
+        .limit(1);
+      if (otherTenantProduct) {
+        return undefined;
+      }
+      return undefined;
     } catch (e) {
       console.error("[PostgresStorage] getProduct error:", e);
       return undefined;
@@ -1540,7 +1588,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantProduct] = await pgDb
           .select({ id: pgProducts.id })
           .from(pgProducts)
-          .where(eq(pgProducts.id, id))
+          .where(and(eq(pgProducts.id, id), ne(pgProducts.tenantId, tenantId)))
           .limit(1);
         if (otherTenantProduct) {
           throw new Error("Unauthorized: Product belongs to another tenant");
@@ -1596,7 +1644,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantProduct] = await pgDb
           .select({ id: pgProducts.id })
           .from(pgProducts)
-          .where(eq(pgProducts.id, id))
+          .where(and(eq(pgProducts.id, id), ne(pgProducts.tenantId, tenantId)))
           .limit(1);
         if (otherTenantProduct) {
           throw new Error("Unauthorized: Product belongs to another tenant");
@@ -1660,7 +1708,7 @@ export class PostgresStorage implements IStorage {
       const [otherTenantAtt] = await pgDb
         .select({ id: pgAttendance.id })
         .from(pgAttendance)
-        .where(eq(pgAttendance.id, id))
+        .where(and(eq(pgAttendance.id, id), ne(pgAttendance.tenantId, tenantId)))
         .limit(1);
       if (otherTenantAtt) {
         return undefined;
@@ -1668,7 +1716,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getAttendance error:", e);
     }
-    return this.fallback.getAttendance(id);
+    const fallbackAtt = (this.fallback as any)?.getAttendance ? await (this.fallback as any).getAttendance(id) : undefined;
+    if (fallbackAtt && (fallbackAtt as any).tenantId && (fallbackAtt as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackAtt;
   }
 
   async getAttendanceByUserAndDate(userId: string, date: Date): Promise<Attendance | undefined> {
@@ -1842,7 +1894,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantAtt] = await pgDb
           .select({ id: pgAttendance.id })
           .from(pgAttendance)
-          .where(eq(pgAttendance.id, id))
+          .where(and(eq(pgAttendance.id, id), ne(pgAttendance.tenantId, tenantId)))
           .limit(1);
         if (otherTenantAtt) {
           throw new Error("Unauthorized: Attendance record belongs to another tenant");
@@ -1857,7 +1909,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] updateAttendance error:", e);
     }
-    return this.fallback.updateAttendance(id, data);
+    const fallbackAtt = (this.fallback as any)?.getAttendance ? await (this.fallback as any).getAttendance(id) : undefined;
+    if (fallbackAtt && (fallbackAtt as any).tenantId && (fallbackAtt as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Attendance record belongs to another tenant");
+    }
+    return (this.fallback as any)?.updateAttendance ? (this.fallback as any).updateAttendance(id, data) : undefined as any;
   }
 
   async getUserAttendanceForDate(userId: string, date: string): Promise<Attendance | undefined> {
@@ -2062,6 +2118,14 @@ export class PostgresStorage implements IStorage {
         .where(and(eq(pgAttendance.id, attendanceId), eq(pgAttendance.tenantId, tenantId)))
         .limit(1);
       if (!att) {
+        const [otherTenantAtt] = await pgDb
+          .select({ id: pgAttendance.id })
+          .from(pgAttendance)
+          .where(and(eq(pgAttendance.id, attendanceId), ne(pgAttendance.tenantId, tenantId)))
+          .limit(1);
+        if (otherTenantAtt) {
+          throw new Error("Unauthorized: Attendance record belongs to another tenant");
+        }
         throw new Error("Attendance record not found");
       }
 
@@ -2362,7 +2426,7 @@ export class PostgresStorage implements IStorage {
       const [otherTenantApp] = await pgDb
         .select({ id: pgLeaveApplications.id })
         .from(pgLeaveApplications)
-        .where(eq(pgLeaveApplications.id, id))
+        .where(and(eq(pgLeaveApplications.id, id), ne(pgLeaveApplications.tenantId, tenantId)))
         .limit(1);
       if (otherTenantApp) {
         return undefined;
@@ -2370,7 +2434,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getLeaveApplication error:", e);
     }
-    return this.fallback.getLeaveApplication(id);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(id) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackApp;
   }
 
   async createLeaveApplication(data: any): Promise<LeaveApplication> {
@@ -2436,7 +2504,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantApp] = await pgDb
           .select({ id: pgLeaveApplications.id })
           .from(pgLeaveApplications)
-          .where(eq(pgLeaveApplications.id, id))
+          .where(and(eq(pgLeaveApplications.id, id), ne(pgLeaveApplications.tenantId, tenantId)))
           .limit(1);
         if (otherTenantApp) {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
@@ -2451,7 +2519,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] updateLeaveApplication error:", e);
     }
-    return this.fallback.updateLeaveApplication(id, data);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(id) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+    return (this.fallback as any)?.updateLeaveApplication ? (this.fallback as any).updateLeaveApplication(id, data) : undefined as any;
   }
 
   async listLeaveApplicationsByUser(userId: string): Promise<LeaveApplication[]> {
@@ -2575,7 +2647,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantApp] = await pgDb
           .select({ id: pgLeaveApplications.id })
           .from(pgLeaveApplications)
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(and(eq(pgLeaveApplications.id, leaveId), ne(pgLeaveApplications.tenantId, tenantId)))
           .limit(1);
         if (otherTenantApp) {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
@@ -2590,7 +2662,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] approveLeaveByManager error:", e);
     }
-    return this.fallback.approveLeaveByManager(leaveId, managerId, remarks);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(leaveId) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+    return (this.fallback as any)?.approveLeaveByManager ? (this.fallback as any).approveLeaveByManager(leaveId, managerId, remarks) : undefined as any;
   }
 
   async approveLeaveByHR(leaveId: string, hrId: string, remarks?: string): Promise<LeaveApplication> {
@@ -2613,7 +2689,7 @@ export class PostgresStorage implements IStorage {
           const [otherTenantApp] = await tx
             .select({ id: pgLeaveApplications.id })
             .from(pgLeaveApplications)
-            .where(eq(pgLeaveApplications.id, leaveId))
+            .where(and(eq(pgLeaveApplications.id, leaveId), ne(pgLeaveApplications.tenantId, tenantId)))
             .limit(1);
           if (otherTenantApp) {
             throw new Error("Unauthorized: Leave application belongs to another tenant");
@@ -2732,7 +2808,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] approveLeaveByHR error:", e);
     }
-    return this.fallback.approveLeaveByHR(leaveId, hrId, remarks);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(leaveId) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+    return (this.fallback as any)?.approveLeaveByHR ? (this.fallback as any).approveLeaveByHR(leaveId, hrId, remarks) : undefined as any;
   }
 
   async rejectLeave(leaveId: string, rejectedBy: string, reason: string, rejectedByRole: 'manager' | 'hr'): Promise<LeaveApplication> {
@@ -2753,7 +2833,7 @@ export class PostgresStorage implements IStorage {
         const [otherTenantApp] = await pgDb
           .select({ id: pgLeaveApplications.id })
           .from(pgLeaveApplications)
-          .where(eq(pgLeaveApplications.id, leaveId))
+          .where(and(eq(pgLeaveApplications.id, leaveId), ne(pgLeaveApplications.tenantId, tenantId)))
           .limit(1);
         if (otherTenantApp) {
           throw new Error("Unauthorized: Leave application belongs to another tenant");
@@ -2768,7 +2848,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] rejectLeave error:", e);
     }
-    return this.fallback.rejectLeave(leaveId, rejectedBy, reason, rejectedByRole);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(leaveId) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+    return (this.fallback as any)?.rejectLeave ? (this.fallback as any).rejectLeave(leaveId, rejectedBy, reason, rejectedByRole) : undefined as any;
   }
 
   async cancelLeaveApplication(leaveId: string, userId: string): Promise<LeaveApplication> {
@@ -2790,7 +2874,7 @@ export class PostgresStorage implements IStorage {
           const [otherTenantApp] = await tx
             .select({ id: pgLeaveApplications.id })
             .from(pgLeaveApplications)
-            .where(eq(pgLeaveApplications.id, leaveId))
+            .where(and(eq(pgLeaveApplications.id, leaveId), ne(pgLeaveApplications.tenantId, tenantId)))
             .limit(1);
           if (otherTenantApp) {
             throw new Error("Unauthorized: Leave application belongs to another tenant");
@@ -2864,7 +2948,11 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] cancelLeaveApplication error:", e);
     }
-    return this.fallback.cancelLeaveApplication(leaveId, userId);
+    const fallbackApp = (this.fallback as any)?.getLeaveApplication ? await (this.fallback as any).getLeaveApplication(leaveId) : undefined;
+    if (fallbackApp && (fallbackApp as any).tenantId && (fallbackApp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Leave application belongs to another tenant");
+    }
+    return (this.fallback as any)?.cancelLeaveApplication ? (this.fallback as any).cancelLeaveApplication(leaveId, userId) : undefined as any;
   }
 
 async getLeave(id: string): Promise<any | undefined> {
@@ -3093,7 +3181,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherTenantAdv] = await pgDb
           .select({ id: pgSalaryAdvances.id })
           .from(pgSalaryAdvances)
-          .where(eq(pgSalaryAdvances.id, id))
+          .where(and(eq(pgSalaryAdvances.id, id), ne(pgSalaryAdvances.tenantId, tenantId)))
           .limit(1);
         if (otherTenantAdv) {
           throw new Error("Unauthorized: Salary advance belongs to another tenant");
@@ -3108,7 +3196,11 @@ async getLeave(id: string): Promise<any | undefined> {
       }
       console.error("[PostgresStorage] updateSalaryAdvance error:", e);
     }
-    return this.fallback.updateSalaryAdvance(id, data);
+    const fallbackAdv = (this.fallback as any)?.getSalaryAdvance ? await (this.fallback as any).getSalaryAdvance(id) : undefined;
+    if (fallbackAdv && (fallbackAdv as any).tenantId && (fallbackAdv as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Salary advance belongs to another tenant");
+    }
+    return (this.fallback as any)?.updateSalaryAdvance ? (this.fallback as any).updateSalaryAdvance(id, data) : undefined as any;
   }
 
   async getSalaryAdvance(id: string): Promise<SalaryAdvance | undefined> {
@@ -3130,7 +3222,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherTenantAdv] = await pgDb
         .select({ id: pgSalaryAdvances.id })
         .from(pgSalaryAdvances)
-        .where(eq(pgSalaryAdvances.id, id))
+        .where(and(eq(pgSalaryAdvances.id, id), ne(pgSalaryAdvances.tenantId, tenantId)))
         .limit(1);
       if (otherTenantAdv) {
         return undefined;
@@ -3138,7 +3230,11 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getSalaryAdvance error:", e);
     }
-    return this.fallback.getSalaryAdvance(id);
+    const fallbackAdv = (this.fallback as any)?.getSalaryAdvance ? await (this.fallback as any).getSalaryAdvance(id) : undefined;
+    if (fallbackAdv && (fallbackAdv as any).tenantId && (fallbackAdv as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackAdv;
   }
 
   async listSalaryAdvances(filters?: any): Promise<SalaryAdvance[]> {
@@ -3642,7 +3738,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherLoc] = await pgDb
         .select({ id: pgOfficeLocations.id })
         .from(pgOfficeLocations)
-        .where(eq(pgOfficeLocations.id, id))
+        .where(and(eq(pgOfficeLocations.id, id), ne(pgOfficeLocations.tenantId, tenantId)))
         .limit(1);
       if (otherLoc) {
         return undefined;
@@ -4089,11 +4185,25 @@ async getLeave(id: string): Promise<any | undefined> {
           updatedAt: s.updatedAt
         } as any;
       }
+
+      const [otherSalary] = await pgDb
+        .select({ id: pgSalaryStructures.id })
+        .from(pgSalaryStructures)
+        .where(and(eq(pgSalaryStructures.id, id), ne(pgSalaryStructures.tenantId, tenantId)))
+        .limit(1);
+      if (otherSalary) {
+        return undefined;
+      }
       return undefined;
     } catch (e) {
       console.error("[PostgresStorage] getSalaryStructure error:", e);
       return undefined;
     }
+    const fallbackStructure = (this.fallback as any)?.getSalaryStructure ? await (this.fallback as any).getSalaryStructure(id) : undefined;
+    if (fallbackStructure && (fallbackStructure as any).tenantId && (fallbackStructure as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackStructure;
   }
 
   async createSalaryStructure(data: any): Promise<SalaryStructure> {
@@ -4180,7 +4290,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherSalary] = await pgDb
           .select({ id: pgSalaryStructures.id })
           .from(pgSalaryStructures)
-          .where(eq(pgSalaryStructures.id, id))
+          .where(and(eq(pgSalaryStructures.id, id), ne(pgSalaryStructures.tenantId, tenantId)))
           .limit(1);
         if (otherSalary) {
           throw new Error("Unauthorized: Salary structure belongs to another tenant");
@@ -4215,7 +4325,11 @@ async getLeave(id: string): Promise<any | undefined> {
       }
       console.error("[PostgresStorage] updateSalaryStructure error:", e);
     }
-    return this.fallback.updateSalaryStructure(id, data);
+    const fallbackStructure = (this.fallback as any)?.getSalaryStructure ? await (this.fallback as any).getSalaryStructure(id) : undefined;
+    if (fallbackStructure && (fallbackStructure as any).tenantId && (fallbackStructure as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Salary structure belongs to another tenant");
+    }
+    return (this.fallback as any)?.updateSalaryStructure ? (this.fallback as any).updateSalaryStructure(id, data) : undefined as any;
   }
 
   async listSalaryStructures(): Promise<SalaryStructure[]> {
@@ -4397,7 +4511,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherTenantHoliday] = await pgDb
         .select({ id: pgFixedHolidays.id })
         .from(pgFixedHolidays)
-        .where(eq(pgFixedHolidays.id, id))
+        .where(and(eq(pgFixedHolidays.id, id), ne(pgFixedHolidays.tenantId, tenantId)))
         .limit(1);
 
       if (otherTenantHoliday) {
@@ -4406,7 +4520,11 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getFixedHoliday error:", e);
     }
-    return this.fallback.getFixedHoliday(id);
+    const fallbackHoliday = (this.fallback as any)?.getFixedHoliday ? await (this.fallback as any).getFixedHoliday(id) : undefined;
+    if (fallbackHoliday && fallbackHoliday.tenantId && fallbackHoliday.tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackHoliday;
   }
 
   async createFixedHoliday(data: any): Promise<FixedHoliday> {
@@ -4475,17 +4593,24 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherTenantHoliday] = await pgDb
         .select({ id: pgFixedHolidays.id })
         .from(pgFixedHolidays)
-        .where(eq(pgFixedHolidays.id, id))
+        .where(and(eq(pgFixedHolidays.id, id), ne(pgFixedHolidays.tenantId, tenantId)))
         .limit(1);
 
       if (otherTenantHoliday) {
         throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] updateFixedHoliday error:", e);
       throw e;
     }
-    return this.fallback.updateFixedHoliday(id, data);
+    const fallbackHoliday = (this.fallback as any)?.getFixedHoliday ? await (this.fallback as any).getFixedHoliday(id) : undefined;
+    if (fallbackHoliday && fallbackHoliday.tenantId && fallbackHoliday.tenantId !== (await this.getTenantId())) {
+      throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+    }
+    return (this.fallback as any)?.updateFixedHoliday ? (this.fallback as any).updateFixedHoliday(id, data) : undefined;
   }
 
   async deleteFixedHoliday(id: string): Promise<boolean> {
@@ -4500,11 +4625,29 @@ async getLeave(id: string): Promise<any | undefined> {
         try { await this.fallback.deleteFixedHoliday(id); } catch (_) {}
         return true;
       }
-      return false;
+
+      // Check if holiday belongs to another tenant
+      const [otherTenantHoliday] = await pgDb
+        .select({ id: pgFixedHolidays.id })
+        .from(pgFixedHolidays)
+        .where(and(eq(pgFixedHolidays.id, id), ne(pgFixedHolidays.tenantId, tenantId)))
+        .limit(1);
+
+      if (otherTenantHoliday) {
+        throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+      }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deleteFixedHoliday error:", e);
       return false;
     }
+    const fallbackHoliday = (this.fallback as any)?.getFixedHoliday ? await (this.fallback as any).getFixedHoliday(id) : undefined;
+    if (fallbackHoliday && fallbackHoliday.tenantId && fallbackHoliday.tenantId !== (await this.getTenantId())) {
+      throw new Error(`Unauthorized: Holiday ${id} belongs to another tenant`);
+    }
+    return (this.fallback as any)?.deleteFixedHoliday ? (this.fallback as any).deleteFixedHoliday(id) : false;
   }
 
   async listFixedHolidays(year?: number): Promise<FixedHoliday[]> {
@@ -4742,9 +4885,12 @@ async getLeave(id: string): Promise<any | undefined> {
           .select({ id: pgPayrollPeriods.id })
           .from(pgPayrollPeriods)
           .where(
-            or(
-              eq(pgPayrollPeriods.id, id),
-              eq(pgPayrollPeriods.id, resolvedId)
+            and(
+              or(
+                eq(pgPayrollPeriods.id, id),
+                eq(pgPayrollPeriods.id, resolvedId)
+              ),
+              ne(pgPayrollPeriods.tenantId, tenantId)
             )
           )
           .limit(1);
@@ -4752,14 +4898,14 @@ async getLeave(id: string): Promise<any | undefined> {
           throw new Error("Unauthorized: Payroll period belongs to another tenant");
         }
       } else {
-        try { await this.fallback.updatePayrollPeriod(id, updates); } catch (_) {}
+        try { await (this.fallback as any)?.updatePayrollPeriod?.(id, updates); } catch (_) {}
       }
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
         throw e;
       }
       console.error("[PostgresStorage] updatePayrollPeriod error:", e);
-      return this.fallback.updatePayrollPeriod(id, updates);
+      return;
     }
   }
 
@@ -5779,7 +5925,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDes] = await pgDb
         .select({ id: pgDesignations.id })
         .from(pgDesignations)
-        .where(eq(pgDesignations.id, id))
+        .where(and(eq(pgDesignations.id, id), ne(pgDesignations.tenantId, tenantId)))
         .limit(1);
       if (otherDes) {
         return undefined;
@@ -5787,7 +5933,11 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDesignation error:", e);
     }
-    return (this.fallback as any)?.getDesignation ? (this.fallback as any).getDesignation(id) : undefined;
+    const fallbackDes = (this.fallback as any)?.getDesignation ? await (this.fallback as any).getDesignation(id) : undefined;
+    if (fallbackDes && (fallbackDes as any).tenantId && (fallbackDes as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackDes;
   }
 
   async getDesignationByName(name: string): Promise<Designation | undefined> {
@@ -5888,7 +6038,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherDes] = await pgDb
           .select({ id: pgDesignations.id })
           .from(pgDesignations)
-          .where(eq(pgDesignations.id, id))
+          .where(and(eq(pgDesignations.id, id), ne(pgDesignations.tenantId, tenantId)))
           .limit(1);
         if (otherDes) {
           throw new Error("Unauthorized: Designation belongs to another tenant");
@@ -5910,6 +6060,10 @@ async getLeave(id: string): Promise<any | undefined> {
       }
       console.error("[PostgresStorage] updateDesignation error:", e);
     }
+    const fallbackDes = (this.fallback as any)?.getDesignation ? await (this.fallback as any).getDesignation(id) : undefined;
+    if (fallbackDes && (fallbackDes as any).tenantId && (fallbackDes as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Designation belongs to another tenant");
+    }
     return (this.fallback as any)?.updateDesignation ? (this.fallback as any).updateDesignation(id, data) : undefined;
   }
 
@@ -5929,14 +6083,21 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDes] = await pgDb
         .select({ id: pgDesignations.id })
         .from(pgDesignations)
-        .where(eq(pgDesignations.id, id))
+        .where(and(eq(pgDesignations.id, id), ne(pgDesignations.tenantId, tenantId)))
         .limit(1);
       if (otherDes) {
-        return false;
+        throw new Error("Unauthorized: Designation belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deleteDesignation error:", e);
-      return (this.fallback as any)?.deleteDesignation ? (this.fallback as any).deleteDesignation(id) : false;
+      return false;
+    }
+    const fallbackDes = (this.fallback as any)?.getDesignation ? await (this.fallback as any).getDesignation(id) : undefined;
+    if (fallbackDes && (fallbackDes as any).tenantId && (fallbackDes as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Designation belongs to another tenant");
     }
     return (this.fallback as any)?.deleteDesignation ? (this.fallback as any).deleteDesignation(id) : false;
   }
@@ -7110,7 +7271,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDept] = await pgDb
         .select({ id: pgDepartments.id })
         .from(pgDepartments)
-        .where(eq(pgDepartments.id, id))
+        .where(and(eq(pgDepartments.id, id), ne(pgDepartments.tenantId, tenantId)))
         .limit(1);
       if (otherDept) {
         return undefined;
@@ -7118,7 +7279,11 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getDepartment error:", e);
     }
-    return (this.fallback as any)?.getDepartment ? (this.fallback as any).getDepartment(id) : undefined;
+    const fallbackDept = (this.fallback as any)?.getDepartment ? await (this.fallback as any).getDepartment(id) : undefined;
+    if (fallbackDept && (fallbackDept as any).tenantId && (fallbackDept as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackDept;
   }
 
   async getDepartmentByName(name: string): Promise<Department | undefined> {
@@ -7196,7 +7361,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherDept] = await pgDb
           .select({ id: pgDepartments.id })
           .from(pgDepartments)
-          .where(eq(pgDepartments.id, id))
+          .where(and(eq(pgDepartments.id, id), ne(pgDepartments.tenantId, tenantId)))
           .limit(1);
         if (otherDept) {
           throw new Error("Unauthorized: Department belongs to another tenant");
@@ -7220,6 +7385,10 @@ async getLeave(id: string): Promise<any | undefined> {
       }
       console.error("[PostgresStorage] updateDepartment error:", e);
     }
+    const fallbackDept = (this.fallback as any)?.getDepartment ? await (this.fallback as any).getDepartment(id) : undefined;
+    if (fallbackDept && (fallbackDept as any).tenantId && (fallbackDept as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Department belongs to another tenant");
+    }
     return (this.fallback as any)?.updateDepartment ? (this.fallback as any).updateDepartment(id, data) : undefined;
   }
 
@@ -7242,14 +7411,21 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherDept] = await pgDb
         .select({ id: pgDepartments.id })
         .from(pgDepartments)
-        .where(eq(pgDepartments.id, id))
+        .where(and(eq(pgDepartments.id, id), ne(pgDepartments.tenantId, tenantId)))
         .limit(1);
       if (otherDept) {
-        return false;
+        throw new Error("Unauthorized: Department belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deleteDepartment error:", e);
-      return (this.fallback as any)?.deleteDepartment ? (this.fallback as any).deleteDepartment(id) : false;
+      return false;
+    }
+    const fallbackDept = (this.fallback as any)?.getDepartment ? await (this.fallback as any).getDepartment(id) : undefined;
+    if (fallbackDept && (fallbackDept as any).tenantId && (fallbackDept as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Department belongs to another tenant");
     }
     return (this.fallback as any)?.deleteDepartment ? (this.fallback as any).deleteDepartment(id) : false;
   }
