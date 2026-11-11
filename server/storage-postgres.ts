@@ -5967,7 +5967,7 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherPg] = await pgDb
         .select({ id: pgPermissionGroups.id })
         .from(pgPermissionGroups)
-        .where(eq(pgPermissionGroups.id, id))
+        .where(and(eq(pgPermissionGroups.id, id), ne(pgPermissionGroups.tenantId, tenantId)))
         .limit(1);
       if (otherPg) {
         return undefined;
@@ -6078,7 +6078,7 @@ async getLeave(id: string): Promise<any | undefined> {
         const [otherPg] = await pgDb
           .select({ id: pgPermissionGroups.id })
           .from(pgPermissionGroups)
-          .where(eq(pgPermissionGroups.id, id))
+          .where(and(eq(pgPermissionGroups.id, id), ne(pgPermissionGroups.tenantId, tenantId)))
           .limit(1);
         if (otherPg) {
           throw new Error("Unauthorized: Permission group belongs to another tenant");
@@ -6121,14 +6121,21 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherPg] = await pgDb
         .select({ id: pgPermissionGroups.id })
         .from(pgPermissionGroups)
-        .where(eq(pgPermissionGroups.id, id))
+        .where(and(eq(pgPermissionGroups.id, id), ne(pgPermissionGroups.tenantId, tenantId)))
         .limit(1);
       if (otherPg) {
-        return false;
+        throw new Error("Unauthorized: Permission group belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deletePermissionGroup error:", e);
-      return (this.fallback as any)?.deletePermissionGroup ? (this.fallback as any).deletePermissionGroup(id) : false;
+      return false;
+    }
+    const fallbackPg = (this.fallback as any)?.getPermissionGroup ? await (this.fallback as any).getPermissionGroup(id) : undefined;
+    if (fallbackPg && fallbackPg.tenantId && fallbackPg.tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Permission group belongs to another tenant");
     }
     return (this.fallback as any)?.deletePermissionGroup ? (this.fallback as any).deletePermissionGroup(id) : false;
   }
@@ -6141,7 +6148,7 @@ async getLeave(id: string): Promise<any | undefined> {
       return pg?.permissions || [];
     } catch (e) {
       console.error("[PostgresStorage] getUserPermissions error:", e);
-      return this.fallback.getUserPermissions(userId);
+      return [];
     }
   }
 
@@ -6181,6 +6188,14 @@ async getLeave(id: string): Promise<any | undefined> {
           updatedAt: r.updatedAt || new Date()
         };
       }
+
+      // Check if role exists under another tenant
+      const [otherRole] = await pgDb.select({ id: pgRoles.id }).from(pgRoles)
+        .where(and(or(eq(pgRoles.id, id), eq(pgRoles.name, id)), ne(pgRoles.tenantId, tenantId)))
+        .limit(1);
+      if (otherRole) {
+        return undefined;
+      }
     } catch (e) {
       console.error("[PostgresStorage] getRole error:", e);
     }
@@ -6211,7 +6226,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       // Check if role exists under another tenant
       const [otherRole] = await pgDb.select({ id: pgRoles.id }).from(pgRoles)
-        .where(ilike(pgRoles.name, name))
+        .where(and(ilike(pgRoles.name, name), ne(pgRoles.tenantId, tenantId)))
         .limit(1);
       if (otherRole) {
         return undefined;
@@ -6302,7 +6317,7 @@ async getLeave(id: string): Promise<any | undefined> {
 
       if (!updated) {
         const [otherRole] = await pgDb.select({ id: pgRoles.id }).from(pgRoles)
-          .where(eq(pgRoles.id, id))
+          .where(and(eq(pgRoles.id, id), ne(pgRoles.tenantId, tenantId)))
           .limit(1);
         if (otherRole) {
           throw new Error("Unauthorized: Role belongs to another tenant");
@@ -6342,21 +6357,41 @@ async getLeave(id: string): Promise<any | undefined> {
       }
 
       const [otherRole] = await pgDb.select({ id: pgRoles.id }).from(pgRoles)
-        .where(eq(pgRoles.id, id))
+        .where(and(eq(pgRoles.id, id), ne(pgRoles.tenantId, tenantId)))
         .limit(1);
       if (otherRole) {
-        return false;
+        throw new Error("Unauthorized: Role belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] deleteRole error:", e);
-      return this.fallback.deleteRole(id);
+      return false;
     }
-    return this.fallback.deleteRole(id);
+    const fallbackRole = (this.fallback as any)?.getRole ? await (this.fallback as any).getRole(id) : undefined;
+    if (fallbackRole && fallbackRole.tenantId && fallbackRole.tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Role belongs to another tenant");
+    }
+    return (this.fallback as any)?.deleteRole ? (this.fallback as any).deleteRole(id) : false;
   }
 
   async getUserRoleAssignments(userId: string): Promise<UserRoleAssignment[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if user belongs to another tenant
+      const [otherUser] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (otherUser) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgUserRoleAssignments)
         .where(and(
           eq(pgUserRoleAssignments.tenantId, tenantId),
@@ -6375,7 +6410,7 @@ async getLeave(id: string): Promise<any | undefined> {
       }));
     } catch (e) {
       console.error("[PostgresStorage] getUserRoleAssignments error:", e);
-      return this.fallback.getUserRoleAssignments(userId);
+      return [];
     }
   }
 
@@ -6411,7 +6446,11 @@ async getLeave(id: string): Promise<any | undefined> {
     } catch (e) {
       console.error("[PostgresStorage] getRoleAssignment error:", e);
     }
-    return this.fallback.getRoleAssignment(id);
+    const fallbackAssignment = (this.fallback as any)?.getRoleAssignment ? await (this.fallback as any).getRoleAssignment(id) : undefined;
+    if (fallbackAssignment && fallbackAssignment.tenantId && fallbackAssignment.tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackAssignment;
   }
 
   async assignUserRole(data: any): Promise<UserRoleAssignment> {
@@ -6464,22 +6503,43 @@ async getLeave(id: string): Promise<any | undefined> {
       const [otherAssignment] = await pgDb.select({ id: pgUserRoleAssignments.id }).from(pgUserRoleAssignments)
         .where(and(
           eq(pgUserRoleAssignments.userId, userId),
-          eq(pgUserRoleAssignments.roleId, roleId)
+          eq(pgUserRoleAssignments.roleId, roleId),
+          ne(pgUserRoleAssignments.tenantId, tenantId)
         ))
         .limit(1);
       if (otherAssignment) {
-        return false;
+        throw new Error("Unauthorized: Role assignment belongs to another tenant");
       }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] revokeUserRole error:", e);
-      return this.fallback.revokeUserRole(userId, roleId);
+      return false;
     }
-    return this.fallback.revokeUserRole(userId, roleId);
+    const fallbackAssignment = (this.fallback as any)?.getRoleAssignment ? await (this.fallback as any).getRoleAssignment(userId) : undefined;
+    if (fallbackAssignment && fallbackAssignment.tenantId && fallbackAssignment.tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Role assignment belongs to another tenant");
+    }
+    return (this.fallback as any)?.revokeUserRole ? (this.fallback as any).revokeUserRole(userId, roleId) : false;
   }
 
   async getUserPermissionOverrides(userId: string): Promise<PermissionOverride[]> {
     try {
       const tenantId = await this.getTenantId();
+      // Check if user belongs to another tenant
+      const [otherUser] = await pgDb
+        .select({ id: pgUsers.id })
+        .from(pgUsers)
+        .where(and(
+          or(eq(pgUsers.id, userId), eq(pgUsers.firebaseUid, userId)),
+          ne(pgUsers.tenantId, tenantId)
+        ))
+        .limit(1);
+      if (otherUser) {
+        return [];
+      }
+
       const rows = await pgDb.select().from(pgPermissionOverrides)
         .where(and(
           eq(pgPermissionOverrides.tenantId, tenantId),
@@ -6498,7 +6558,7 @@ async getLeave(id: string): Promise<any | undefined> {
       }));
     } catch (e) {
       console.error("[PostgresStorage] getUserPermissionOverrides error:", e);
-      return this.fallback.getUserPermissionOverrides(userId);
+      return [];
     }
   }
 
@@ -6537,17 +6597,36 @@ async getLeave(id: string): Promise<any | undefined> {
   async revokePermissionOverride(id: string): Promise<boolean> {
     try {
       const tenantId = await this.getTenantId();
-      await pgDb.delete(pgPermissionOverrides)
+      const [deleted] = await pgDb.delete(pgPermissionOverrides)
         .where(and(
           eq(pgPermissionOverrides.tenantId, tenantId),
           eq(pgPermissionOverrides.id, id)
-        ));
-      try { await this.fallback.revokePermissionOverride(id); } catch (_) {}
-      return true;
+        ))
+        .returning({ id: pgPermissionOverrides.id });
+
+      if (deleted) {
+        try { await this.fallback.revokePermissionOverride(id); } catch (_) {}
+        return true;
+      }
+
+      const [otherOverride] = await pgDb.select({ id: pgPermissionOverrides.id }).from(pgPermissionOverrides)
+        .where(and(eq(pgPermissionOverrides.id, id), ne(pgPermissionOverrides.tenantId, tenantId)))
+        .limit(1);
+      if (otherOverride) {
+        throw new Error("Unauthorized: Permission override belongs to another tenant");
+      }
     } catch (e) {
+      if ((e as any)?.message?.includes("Unauthorized")) {
+        throw e;
+      }
       console.error("[PostgresStorage] revokePermissionOverride error:", e);
-      return this.fallback.revokePermissionOverride(id);
+      return false;
     }
+    const fallbackOverride = (this.fallback as any)?.getPermissionOverride ? await (this.fallback as any).getPermissionOverride(id) : undefined;
+    if (fallbackOverride && fallbackOverride.tenantId && fallbackOverride.tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Permission override belongs to another tenant");
+    }
+    return (this.fallback as any)?.revokePermissionOverride ? (this.fallback as any).revokePermissionOverride(id) : false;
   }
 
   // ===================================================================

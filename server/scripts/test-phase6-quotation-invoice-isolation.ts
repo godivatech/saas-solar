@@ -183,8 +183,133 @@ async function runTests() {
     });
     console.log("  ✅ Same-tenant user queries resolve with exact tenant-awareness.");
 
+    // TEST 4: RBAC Role & Permission Multi-Tenant Isolation
+    console.log("\n[TEST 4] RBAC Role & Permission Multi-Tenant Isolation");
+    let roleAlphaId = "";
+    let pgAlphaId = "";
+    let overrideAlphaId = "";
+
+    await runWithTenant(tenantAlphaId, async () => {
+      const role = await storage.createRole({
+        name: "Solar Designer Alpha " + Date.now(),
+        description: "Alpha Designer",
+        department: "design",
+        designation: "designer",
+        permissions: ["projects.design", "quotations.create"]
+      });
+      roleAlphaId = role.id;
+
+      const pg = await storage.createPermissionGroup({
+        name: "Design Group Alpha " + Date.now(),
+        department: "design",
+        designation: "designer",
+        permissions: ["projects.design"]
+      });
+      pgAlphaId = pg.id;
+
+      const po = await storage.createPermissionOverride({
+        userId: userAlphaId,
+        permission: "special.access",
+        granted: true,
+        reason: "Alpha special assignment",
+        grantedBy: userAlphaId
+      });
+      overrideAlphaId = po.id;
+      console.log("  Created Alpha RBAC entities - Role:", roleAlphaId, "Group:", pgAlphaId, "Override:", overrideAlphaId);
+    });
+
+    await runWithTenant(tenantBetaId, async () => {
+      // 1. Role read isolation
+      const readRole = await storage.getRole(roleAlphaId);
+      if (readRole) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta was able to read Tenant Alpha's role!");
+      }
+
+      // 2. Role update rejection
+      let updateRoleBlocked = false;
+      try {
+        await storage.updateRole(roleAlphaId, { description: "Hacked by Beta" });
+      } catch (err: any) {
+        if (err.message.includes("Unauthorized")) {
+          updateRoleBlocked = true;
+        }
+      }
+      if (!updateRoleBlocked) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta updated Tenant Alpha's role without Unauthorized exception!");
+      }
+
+      // 3. Role deletion rejection
+      let deleteRoleBlocked = false;
+      try {
+        await storage.deleteRole(roleAlphaId);
+      } catch (err: any) {
+        if (err.message.includes("Unauthorized")) {
+          deleteRoleBlocked = true;
+        }
+      }
+      if (!deleteRoleBlocked) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta deleted Tenant Alpha's role without Unauthorized exception!");
+      }
+
+      // 4. Permission group read isolation
+      const readPg = await storage.getPermissionGroup(pgAlphaId);
+      if (readPg) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta was able to read Tenant Alpha's permission group!");
+      }
+
+      // 5. Permission group update rejection
+      let updatePgBlocked = false;
+      try {
+        await storage.updatePermissionGroup(pgAlphaId, { name: "Hacked PG" });
+      } catch (err: any) {
+        if (err.message.includes("Unauthorized")) {
+          updatePgBlocked = true;
+        }
+      }
+      if (!updatePgBlocked) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta updated Tenant Alpha's permission group without Unauthorized exception!");
+      }
+
+      // 6. Permission group delete rejection
+      let deletePgBlocked = false;
+      try {
+        await storage.deletePermissionGroup(pgAlphaId);
+      } catch (err: any) {
+        if (err.message.includes("Unauthorized")) {
+          deletePgBlocked = true;
+        }
+      }
+      if (!deletePgBlocked) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta deleted Tenant Alpha's permission group without Unauthorized exception!");
+      }
+
+      // 7. Permission override read isolation
+      const overrides = await storage.getUserPermissionOverrides(userAlphaId);
+      if (overrides.length > 0) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta was able to read Tenant Alpha's user permission overrides!");
+      }
+
+      // 8. Permission override revocation rejection
+      let revokeOverrideBlocked = false;
+      try {
+        await storage.revokePermissionOverride(overrideAlphaId);
+      } catch (err: any) {
+        if (err.message.includes("Unauthorized")) {
+          revokeOverrideBlocked = true;
+        }
+      }
+      if (!revokeOverrideBlocked) {
+        throw new Error("SECURITY VIOLATION: Tenant Beta revoked Tenant Alpha's permission override without Unauthorized exception!");
+      }
+    });
+    console.log("  ✅ RBAC roles, permission groups, and overrides cross-tenant defenses verified.");
+
     // Cleanup
     console.log("\n[CLEANUP] Cleaning up test records...");
+    await client.query(`DELETE FROM permission_overrides WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
+    await client.query(`DELETE FROM user_role_assignments WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
+    await client.query(`DELETE FROM permission_groups WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
+    await client.query(`DELETE FROM roles WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
     await client.query(`DELETE FROM payments WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
     await client.query(`DELETE FROM invoices WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
     await client.query(`DELETE FROM quotations WHERE tenant_id IN ($1, $2);`, [tenantAlphaId, tenantBetaId]);
@@ -194,7 +319,7 @@ async function runTests() {
     console.log("  ✅ Cleanup completed.");
 
     console.log("\n====================================================================");
-    console.log("🎯 ALL PHASE 6 TESTS PASSED SUCCESSFULLY! (3/3 CHECKS)");
+    console.log("🎯 ALL PHASE 6 TESTS PASSED SUCCESSFULLY! (4/4 CHECKS)");
     console.log("====================================================================");
   } finally {
     client.release();
