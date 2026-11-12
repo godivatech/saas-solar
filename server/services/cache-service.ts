@@ -42,6 +42,11 @@ class CacheService {
       return null;
     }
 
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && (cached.data as any).tenantId && (cached.data as any).tenantId !== activeTenantId) {
+      return null;
+    }
+
     return cached.data;
   }
 

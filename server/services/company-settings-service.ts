@@ -123,11 +123,11 @@ export class CompanySettingsService {
                 message: 'Company settings updated successfully'
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating company settings:', error);
             return {
                 success: false,
-                message: 'Failed to update company settings'
+                message: error?.message || 'Failed to update company settings'
             };
         }
     }

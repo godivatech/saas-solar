@@ -6710,8 +6710,12 @@ export class FirestoreStorage implements IStorage {
   // ============================================
 
   async getUsersByRole(role: string): Promise<User[]> {
-    const usersCollection = this.db.collection("users");
-    const snapshot = await usersCollection.where("role", "==", role).get();
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection("users").where("role", "==", role);
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
     return snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
@@ -6750,6 +6754,10 @@ export class FirestoreStorage implements IStorage {
       }
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        throw new Error("Unauthorized: Attendance record belongs to another tenant");
+      }
       const currentSessions = data.otSessions || [];
 
       // ZERO-FRAUD: Check for active session inside transaction (atomic)

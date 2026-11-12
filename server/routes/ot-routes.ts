@@ -379,9 +379,15 @@ router.put('/holidays/:id', verifyAuth, requireAdmin, async (req: any, res) => {
         if (isActive !== undefined) updates.isActive = isActive;
 
         const result = await HolidayService.updateHoliday(id, updates, adminId);
+        if (!result.success && result.message?.includes("Unauthorized")) {
+            return res.status(403).json(result);
+        }
         return res.json(result);
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error updating holiday:', error);
         return res.status(500).json({
             success: false,
@@ -400,9 +406,15 @@ router.delete('/holidays/:id', verifyAuth, requireAdmin, async (req: any, res) =
         const adminId = req.user.uid;
 
         const result = await HolidayService.deleteHoliday(id, adminId);
+        if (!result.success && result.message?.includes("Unauthorized")) {
+            return res.status(403).json(result);
+        }
         return res.json(result);
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error deleting holiday:', error);
         return res.status(500).json({
             success: false,
@@ -483,9 +495,15 @@ router.put('/settings', verifyAuth, requireAdmin, async (req: any, res) => {
 
 
         const result = await CompanySettingsService.updateSettings(updates, adminId);
+        if (!result.success && result.message?.includes("Unauthorized")) {
+            return res.status(403).json(result);
+        }
         return res.json(result);
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error updating settings:', error);
         return res.status(500).json({
             success: false,
@@ -560,9 +578,15 @@ router.post('/payroll/lock', verifyAuth, requireMasterAdmin, async (req: any, re
         }
 
         const result = await PayrollLockService.lockPeriod(monthNum, yearNum, adminId, req.authenticatedUser?.user?.role || 'admin');
+        if (!result.success && result.message?.includes("Unauthorized")) {
+            return res.status(403).json(result);
+        }
         return res.json(result);
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error locking payroll period:', error);
         return res.status(500).json({
             success: false,
@@ -612,9 +636,15 @@ router.post('/payroll/unlock', verifyAuth, requireMasterAdmin, async (req: any, 
         }
 
         const result = await PayrollLockService.unlockPeriod(monthNum, yearNum, reason, adminId, req.authenticatedUser?.user?.role || 'admin');
+        if (!result.success && result.message?.includes("Unauthorized")) {
+            return res.status(403).json(result);
+        }
         return res.json(result);
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error unlocking payroll period:', error);
         return res.status(500).json({
             success: false,
@@ -917,7 +947,10 @@ router.post('/sessions/:sessionId/review', verifyAuth, requireAdmin, async (req:
             totalOTHours: totalApprovedOT
         });
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message?.includes("Unauthorized")) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         console.error('Error reviewing OT session:', error);
         return res.status(500).json({
             success: false,
