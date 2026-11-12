@@ -3459,14 +3459,14 @@ export class PostgresStorage implements IStorage {
         status: data.status || "pending"
       }).returning();
 
-      try { await this.fallback.createSalaryAdvance(data); } catch (_) { }
+      try { await this.fallback.createSalaryAdvance({ ...data, tenantId }); } catch (_) { }
       return this.mapSalaryAdvance(adv);
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
         throw e;
       }
       console.error("[PostgresStorage] createSalaryAdvance error:", e);
-      return this.fallback.createSalaryAdvance(data);
+      return this.fallback.createSalaryAdvance({ ...data, tenantId: await this.getTenantId() });
     }
   }
 
@@ -3726,14 +3726,14 @@ export class PostgresStorage implements IStorage {
         payslipUrl: data.payslipUrl || null
       }).returning();
 
-      try { await this.fallback.createPayroll(data); } catch (_) { }
+      try { await this.fallback.createPayroll({ ...data, tenantId }); } catch (_) { }
       return this.mapPayroll(p);
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
         throw e;
       }
       console.error("[PostgresStorage] createPayroll error:", e);
-      return this.fallback.createPayroll(data);
+      return this.fallback.createPayroll({ ...data, tenantId: await this.getTenantId() });
     }
   }
 
@@ -3775,6 +3775,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updatePayroll error:", e);
+    }
+    const fallbackP = this.fallback?.getPayroll ? await this.fallback.getPayroll(id) : undefined;
+    if (fallbackP && (fallbackP as any).tenantId && (fallbackP as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Payroll belongs to another tenant");
     }
     return this.fallback.updatePayroll(id, data);
   }
@@ -4664,7 +4668,7 @@ export class PostgresStorage implements IStorage {
         isActive: data.isActive ?? true
       }).returning();
 
-      try { await this.fallback.createSalaryStructure(data); } catch (_) { }
+      try { await this.fallback.createSalaryStructure({ ...data, tenantId }); } catch (_) { }
       return {
         id: s.id,
         userId: s.userId,
@@ -4697,7 +4701,7 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] createSalaryStructure error:", e);
-      return this.fallback.createSalaryStructure(data);
+      return this.fallback.createSalaryStructure({ ...data, tenantId: await this.getTenantId() });
     }
   }
 
@@ -4812,10 +4816,21 @@ export class PostgresStorage implements IStorage {
         .where(eq(pgPayrollSettings.tenantId, tenantId))
         .limit(1);
 
+      let companyName = "Godiva Solar";
+      const [comp] = await pgDb
+        .select({ companyName: pgCompanySettings.companyName })
+        .from(pgCompanySettings)
+        .where(eq(pgCompanySettings.tenantId, tenantId))
+        .limit(1);
+      if (comp?.companyName) {
+        companyName = comp.companyName;
+      }
+
       if (ps) {
         return {
           id: ps.id,
           tenantId: ps.tenantId,
+          companyName,
           pfRate: Number(ps.pfRate) || 12,
           esiRate: Number(ps.esiRate) || 1.75,
           tdsRate: Number(ps.tdsRate) || 10,
@@ -4842,6 +4857,7 @@ export class PostgresStorage implements IStorage {
         return {
           id: newPs.id,
           tenantId: newPs.tenantId,
+          companyName,
           pfRate: Number(newPs.pfRate) || 12,
           esiRate: Number(newPs.esiRate) || 1.75,
           tdsRate: Number(newPs.tdsRate) || 10,
@@ -4886,11 +4902,32 @@ export class PostgresStorage implements IStorage {
         })
         .returning();
 
+      if (data.companyName) {
+        const [existingComp] = await pgDb
+          .select()
+          .from(pgCompanySettings)
+          .where(eq(pgCompanySettings.tenantId, tenantId))
+          .limit(1);
+
+        if (existingComp) {
+          await pgDb
+            .update(pgCompanySettings)
+            .set({ companyName: data.companyName, updatedAt: new Date() })
+            .where(eq(pgCompanySettings.id, existingComp.id));
+        } else {
+          await pgDb.insert(pgCompanySettings).values({
+            tenantId,
+            companyName: data.companyName
+          });
+        }
+      }
+
       if (updated) {
-        try { await this.fallback.updatePayrollSettings(data); } catch (_) { }
+        try { await this.fallback.updatePayrollSettings({ ...data, tenantId }); } catch (_) { }
         return {
           id: updated.id,
           tenantId: updated.tenantId,
+          companyName: data.companyName || "Godiva Solar",
           pfRate: Number(updated.pfRate) || 12,
           esiRate: Number(updated.esiRate) || 1.75,
           tdsRate: Number(updated.tdsRate) || 10,
@@ -4906,7 +4943,7 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] updatePayrollSettings error:", e);
     }
-    return this.fallback.updatePayrollSettings(data);
+    return this.fallback.updatePayrollSettings({ ...data, tenantId: await this.getTenantId() });
   }
 
   // ===================================================================

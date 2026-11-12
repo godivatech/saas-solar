@@ -4227,6 +4227,10 @@ export class FirestoreStorage implements IStorage {
     if (!doc.exists) return undefined;
 
     const data = doc.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: doc.id,
       ...data,
@@ -4238,31 +4242,35 @@ export class FirestoreStorage implements IStorage {
   }
 
   async getSalaryStructureByUser(userId: string): Promise<SalaryStructure | undefined> {
-    const querySnapshot = await this.db.collection('salaryStructures')
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('salaryStructures')
       .where('userId', '==', userId)
-      .where('isActive', '==', true)
-      .orderBy('effectiveFrom', 'desc')
-      .limit(1)
-      .get();
+      .where('isActive', '==', true);
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query.get();
 
     if (querySnapshot.empty) return undefined;
 
-    const doc = querySnapshot.docs[0];
-    const data = doc.data();
-    return {
+    const docs = querySnapshot.docs.map((doc: any) => ({
       id: doc.id,
-      ...data,
-      effectiveFrom: data.effectiveFrom?.toDate() || new Date(),
-      effectiveTo: data.effectiveTo?.toDate() || null,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as SalaryStructure;
+      ...doc.data(),
+      effectiveFrom: doc.data().effectiveFrom?.toDate() || new Date(),
+      effectiveTo: doc.data().effectiveTo?.toDate() || null,
+      createdAt: doc.data().createdAt?.toDate() || new Date(),
+      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+    })).sort((a: any, b: any) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
+
+    return docs[0] as SalaryStructure;
   }
 
   async createSalaryStructure(data: z.infer<typeof insertSalaryStructureSchema>): Promise<SalaryStructure> {
     const doc = this.db.collection('salaryStructures').doc();
+    const activeTenantId = getActiveTenantId();
     const salaryData = {
       ...data,
+      ...(activeTenantId ? { tenantId: activeTenantId } : {}),
       id: doc.id,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -4274,6 +4282,16 @@ export class FirestoreStorage implements IStorage {
 
   async updateSalaryStructure(id: string, data: Partial<z.infer<typeof insertSalaryStructureSchema>>): Promise<SalaryStructure> {
     const doc = this.db.collection('salaryStructures').doc(id);
+    const existing = await doc.get();
+    if (!existing.exists) {
+      throw new Error("Salary structure not found");
+    }
+    const existingData = existing.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+      throw new Error("Unauthorized: Salary structure belongs to another tenant");
+    }
+
     const updateData = {
       ...data,
       updatedAt: new Date(),
@@ -4294,11 +4312,14 @@ export class FirestoreStorage implements IStorage {
   }
 
   async listSalaryStructures(): Promise<SalaryStructure[]> {
-    const querySnapshot = await this.db.collection('salaryStructures')
-      .orderBy('createdAt', 'desc')
-      .get();
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('salaryStructures');
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query.get();
 
-    return querySnapshot.docs.map(doc => {
+    return querySnapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -4308,7 +4329,7 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as SalaryStructure;
-    });
+    }).sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   // Payroll Management
@@ -4317,6 +4338,10 @@ export class FirestoreStorage implements IStorage {
     if (!doc.exists) return undefined;
 
     const data = doc.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: doc.id,
       ...data,
@@ -4327,12 +4352,15 @@ export class FirestoreStorage implements IStorage {
   }
 
   async getPayrollByUserAndMonth(userId: string, month: number, year: number): Promise<Payroll | undefined> {
-    const querySnapshot = await this.db.collection('payrolls')
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('payrolls')
       .where('userId', '==', userId)
       .where('month', '==', month)
-      .where('year', '==', year)
-      .limit(1)
-      .get();
+      .where('year', '==', year);
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query.limit(1).get();
 
     if (querySnapshot.empty) return undefined;
 
@@ -4349,8 +4377,10 @@ export class FirestoreStorage implements IStorage {
 
   async createPayroll(data: z.infer<typeof insertPayrollSchema>): Promise<Payroll> {
     const doc = this.db.collection('payrolls').doc();
+    const activeTenantId = getActiveTenantId();
     const payrollData = {
       ...data,
+      ...(activeTenantId ? { tenantId: activeTenantId } : {}),
       id: doc.id,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -4362,6 +4392,16 @@ export class FirestoreStorage implements IStorage {
 
   async updatePayroll(id: string, data: Partial<z.infer<typeof insertPayrollSchema>>): Promise<Payroll> {
     const doc = this.db.collection('payrolls').doc(id);
+    const existing = await doc.get();
+    if (!existing.exists) {
+      throw new Error("Payroll record not found");
+    }
+    const existingData = existing.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+      throw new Error("Unauthorized: Payroll belongs to another tenant");
+    }
+
     const updateData = {
       ...data,
       updatedAt: new Date(),
@@ -4381,7 +4421,11 @@ export class FirestoreStorage implements IStorage {
   }
 
   async listPayrolls(filters?: { month?: number; year?: number; department?: string; status?: string }): Promise<Payroll[]> {
-    let query = this.db.collection('payrolls').orderBy('createdAt', 'desc') as any;
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('payrolls');
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
 
     if (filters?.month) {
       query = query.where('month', '==', filters.month);
@@ -4404,17 +4448,18 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as Payroll;
-    });
+    }).sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async listPayrollsByUser(userId: string): Promise<Payroll[]> {
-    const querySnapshot = await this.db.collection('payrolls')
-      .where('userId', '==', userId)
-      .orderBy('year', 'desc')
-      .orderBy('month', 'desc')
-      .get();
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('payrolls').where('userId', '==', userId);
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query.get();
 
-    return querySnapshot.docs.map(doc => {
+    return querySnapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -4423,34 +4468,44 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as Payroll;
+    }).sort((a: any, b: any) => {
+      if (b.year !== a.year) return b.year - a.year;
+      return b.month - a.month;
     });
   }
 
   // Payroll Settings
   async getPayrollSettings(): Promise<PayrollSettings | undefined> {
-    const querySnapshot = await this.db.collection('payrollSettings')
-      .orderBy('updatedAt', 'desc')
-      .limit(1)
-      .get();
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('payrollSettings');
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
+    const querySnapshot = await query.limit(5).get();
 
     if (querySnapshot.empty) return undefined;
 
-    const doc = querySnapshot.docs[0];
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as PayrollSettings;
+    const docs = querySnapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt || Date.now()),
+      } as PayrollSettings;
+    }).sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    return docs[0];
   }
 
   async updatePayrollSettings(data: z.infer<typeof insertPayrollSettingsSchema>): Promise<PayrollSettings> {
+    const activeTenantId = getActiveTenantId();
     const settingsData = {
       ...data,
+      ...(activeTenantId ? { tenantId: activeTenantId } : {}),
       updatedAt: new Date(),
     };
 
-    // Check if settings exist
+    // Check if settings exist for active tenant
     const existing = await this.getPayrollSettings();
     if (existing) {
       const doc = this.db.collection('payrollSettings').doc(existing.id);
@@ -4473,6 +4528,10 @@ export class FirestoreStorage implements IStorage {
     if (!doc.exists) return undefined;
 
     const data = doc.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: doc.id,
       ...data,
@@ -4485,8 +4544,10 @@ export class FirestoreStorage implements IStorage {
 
   async createSalaryAdvance(data: z.infer<typeof insertSalaryAdvanceSchema>): Promise<SalaryAdvance> {
     const doc = this.db.collection('salaryAdvances').doc();
+    const activeTenantId = getActiveTenantId();
     const advanceData = {
       ...data,
+      ...(activeTenantId ? { tenantId: activeTenantId } : {}),
       id: doc.id,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -4498,6 +4559,16 @@ export class FirestoreStorage implements IStorage {
 
   async updateSalaryAdvance(id: string, data: Partial<z.infer<typeof insertSalaryAdvanceSchema>>): Promise<SalaryAdvance> {
     const doc = this.db.collection('salaryAdvances').doc(id);
+    const existing = await doc.get();
+    if (!existing.exists) {
+      throw new Error("Salary advance not found");
+    }
+    const existingData = existing.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+      throw new Error("Unauthorized: Salary advance belongs to another tenant");
+    }
+
     const updateData = {
       ...data,
       updatedAt: new Date(),
@@ -4518,7 +4589,11 @@ export class FirestoreStorage implements IStorage {
   }
 
   async listSalaryAdvances(filters?: { userId?: string; status?: string }): Promise<SalaryAdvance[]> {
-    let query = this.db.collection('salaryAdvances').orderBy('requestDate', 'desc') as any;
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection('salaryAdvances');
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
+    }
 
     if (filters?.userId) {
       query = query.where('userId', '==', filters.userId);
@@ -4539,6 +4614,10 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as SalaryAdvance;
+    }).sort((a: any, b: any) => {
+      const timeA = a.requestDate ? (a.requestDate instanceof Date ? a.requestDate.getTime() : new Date(a.requestDate).getTime()) : 0;
+      const timeB = b.requestDate ? (b.requestDate instanceof Date ? b.requestDate.getTime() : new Date(b.requestDate).getTime()) : 0;
+      return timeB - timeA;
     });
   }
 
@@ -4942,6 +5021,10 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
       return {
         id: doc.id,
         ...data,
@@ -4958,12 +5041,17 @@ export class FirestoreStorage implements IStorage {
 
   async getEnhancedPayrollByUserAndMonth(userId: string, month: number, year: number): Promise<EnhancedPayroll | undefined> {
     try {
-      const querySnapshot = await this.db.collection('enhanced_payrolls')
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_payrolls')
         .where('userId', '==', userId)
         .where('month', '==', month)
-        .where('year', '==', year)
-        .limit(1)
-        .get();
+        .where('year', '==', year);
+
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const querySnapshot = await query.limit(1).get();
 
       if (querySnapshot.empty) return undefined;
 
@@ -5732,9 +5820,11 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = this.db.collection('enhanced_payrolls').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       const payrollData = {
         ...data,
+        ...(activeTenantId ? { tenantId: activeTenantId } : {}),
         id,
         createdAt: Timestamp.fromDate(now),
         updatedAt: Timestamp.fromDate(now)
@@ -5755,18 +5845,32 @@ export class FirestoreStorage implements IStorage {
 
   async updateEnhancedPayroll(id: string, data: Partial<EnhancedPayroll>): Promise<EnhancedPayroll> {
     try {
+      const doc = this.db.collection('enhanced_payrolls').doc(id);
+      const existing = await doc.get();
+      if (!existing.exists) {
+        throw new Error('Enhanced payroll record not found');
+      }
+      const existingData = existing.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+        throw new Error('Unauthorized: Payroll belongs to another tenant');
+      }
+
       const updateData = {
         ...data,
         updatedAt: Timestamp.fromDate(new Date())
       };
 
-      await this.db.collection('enhanced_payrolls').doc(id).update(updateData);
+      await doc.update(updateData);
 
       const updated = await this.getEnhancedPayroll(id);
       if (!updated) throw new Error('Failed to retrieve updated payroll');
 
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating enhanced payroll:", error);
       throw error;
     }
@@ -5774,10 +5878,15 @@ export class FirestoreStorage implements IStorage {
 
   async listEnhancedPayrolls(filters?: { month?: number; year?: number; department?: string; status?: string }): Promise<EnhancedPayroll[]> {
     try {
-      // Simplify query to avoid index requirements
-      const querySnapshot = await this.db.collection('enhanced_payrolls').get();
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_payrolls');
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
 
-      const payrolls = querySnapshot.docs.map(doc => {
+      const querySnapshot = await query.get();
+
+      let payrolls = querySnapshot.docs.map((doc: any) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -5789,13 +5898,23 @@ export class FirestoreStorage implements IStorage {
         } as EnhancedPayroll;
       });
 
+      if (filters?.month) {
+        payrolls = payrolls.filter((p: any) => p.month === filters.month);
+      }
+      if (filters?.year) {
+        payrolls = payrolls.filter((p: any) => p.year === filters.year);
+      }
+      if (filters?.status && filters.status !== 'all') {
+        payrolls = payrolls.filter((p: any) => p.status === filters.status);
+      }
+
       // Filter by department if needed (requires joining with users)
       if (filters?.department && filters.department !== 'all') {
         const userIds = (await this.getUsersByDepartment(filters.department)).map(u => u.uid);
-        return payrolls.filter(p => userIds.includes(p.userId));
+        payrolls = payrolls.filter((p: any) => userIds.includes(p.userId));
       }
 
-      return payrolls;
+      return payrolls.sort((a: any, b: any) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
     } catch (error) {
       console.error("Error listing enhanced payrolls:", error);
       return [];
@@ -5804,13 +5923,14 @@ export class FirestoreStorage implements IStorage {
 
   async listEnhancedPayrollsByUser(userId: string): Promise<EnhancedPayroll[]> {
     try {
-      const querySnapshot = await this.db.collection('enhanced_payrolls')
-        .where('userId', '==', userId)
-        .orderBy('year', 'desc')
-        .orderBy('month', 'desc')
-        .get();
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_payrolls').where('userId', '==', userId);
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+      const querySnapshot = await query.get();
 
-      return querySnapshot.docs.map(doc => {
+      return querySnapshot.docs.map((doc: any) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -5820,6 +5940,9 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date()
         } as EnhancedPayroll;
+      }).sort((a: any, b: any) => {
+        if (b.year !== a.year) return (b.year || 0) - (a.year || 0);
+        return (b.month || 0) - (a.month || 0);
       });
     } catch (error) {
       console.error("Error listing enhanced payrolls by user:", error);
@@ -5834,6 +5957,10 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
       return {
         id: doc.id,
         ...data,
@@ -5850,25 +5977,32 @@ export class FirestoreStorage implements IStorage {
 
   async getEnhancedSalaryStructureByUser(userId: string): Promise<EnhancedSalaryStructure | undefined> {
     try {
-      // Simplify query to avoid complex index requirement
-      const querySnapshot = await this.db.collection('enhanced_salary_structures')
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_salary_structures')
         .where('userId', '==', userId)
-        .where('isActive', '==', true)
-        .limit(1)
-        .get();
+        .where('isActive', '==', true);
+
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+
+      const querySnapshot = await query.get();
 
       if (querySnapshot.empty) return undefined;
 
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        effectiveFrom: data.effectiveFrom?.toDate() || new Date(),
-        effectiveTo: data.effectiveTo?.toDate() || undefined,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date()
-      } as EnhancedSalaryStructure;
+      const docs = querySnapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          effectiveFrom: data.effectiveFrom?.toDate() || new Date(),
+          effectiveTo: data.effectiveTo?.toDate() || undefined,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date()
+        } as EnhancedSalaryStructure;
+      }).sort((a: any, b: any) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
+
+      return docs[0];
     } catch (error) {
       console.error("Error getting enhanced salary structure by user:", error);
       return undefined;
@@ -5879,6 +6013,7 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = this.db.collection('enhanced_salary_structures').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       // Ensure dates are properly converted
       const effectiveFromDate = data.effectiveFrom instanceof Date ? data.effectiveFrom : new Date(data.effectiveFrom || now);
@@ -5886,6 +6021,7 @@ export class FirestoreStorage implements IStorage {
 
       const structureData = {
         ...data,
+        ...(activeTenantId ? { tenantId: activeTenantId } : {}),
         id,
         createdAt: Timestamp.fromDate(now),
         updatedAt: Timestamp.fromDate(now),
@@ -5897,6 +6033,7 @@ export class FirestoreStorage implements IStorage {
 
       return {
         ...data,
+        ...(activeTenantId ? { tenantId: activeTenantId } : {}),
         id,
         createdAt: now,
         updatedAt: now,
@@ -5911,6 +6048,17 @@ export class FirestoreStorage implements IStorage {
 
   async updateEnhancedSalaryStructure(id: string, data: Partial<EnhancedSalaryStructure>): Promise<EnhancedSalaryStructure> {
     try {
+      const doc = this.db.collection('enhanced_salary_structures').doc(id);
+      const existing = await doc.get();
+      if (!existing.exists) {
+        throw new Error('Salary structure not found');
+      }
+      const existingData = existing.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+        throw new Error('Unauthorized: Salary structure belongs to another tenant');
+      }
+
       const updateData: any = {
         ...data,
         updatedAt: Timestamp.fromDate(new Date())
@@ -5923,13 +6071,16 @@ export class FirestoreStorage implements IStorage {
         updateData.effectiveTo = Timestamp.fromDate(data.effectiveTo);
       }
 
-      await this.db.collection('enhanced_salary_structures').doc(id).update(updateData);
+      await doc.update(updateData);
 
       const updated = await this.getEnhancedSalaryStructure(id);
       if (!updated) throw new Error('Failed to retrieve updated salary structure');
 
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating enhanced salary structure:", error);
       throw error;
     }
@@ -5937,11 +6088,14 @@ export class FirestoreStorage implements IStorage {
 
   async listEnhancedSalaryStructures(): Promise<EnhancedSalaryStructure[]> {
     try {
-      const querySnapshot = await this.db.collection('enhanced_salary_structures')
-        .orderBy('createdAt', 'desc')
-        .get();
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_salary_structures');
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+      const querySnapshot = await query.get();
 
-      return querySnapshot.docs.map(doc => {
+      return querySnapshot.docs.map((doc: any) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -5951,7 +6105,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date()
         } as EnhancedSalaryStructure;
-      });
+      }).sort((a: any, b: any) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
     } catch (error) {
       console.error("Error listing enhanced salary structures:", error);
       return [];
@@ -5961,15 +6115,18 @@ export class FirestoreStorage implements IStorage {
   // Enhanced Payroll Settings
   async getEnhancedPayrollSettings(): Promise<EnhancedPayrollSettings | undefined> {
     try {
-      const querySnapshot = await this.db.collection('enhanced_payroll_settings')
-        .orderBy('updatedAt', 'desc')
-        .limit(1)
-        .get();
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('enhanced_payroll_settings');
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      }
+      const querySnapshot = await query.limit(5).get();
 
       if (querySnapshot.empty) {
         // Return default settings if none exist
         const defaultSettings: EnhancedPayrollSettings = {
           id: 'default',
+          tenantId: activeTenantId || undefined,
           epfEmployeeRate: 12,
           epfEmployerRate: 12,
           esiEmployeeRate: 0.75,
@@ -5993,13 +6150,16 @@ export class FirestoreStorage implements IStorage {
         return defaultSettings;
       }
 
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        updatedAt: data.updatedAt?.toDate() || new Date()
-      } as EnhancedPayrollSettings;
+      const docs = querySnapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt || Date.now())
+        } as EnhancedPayrollSettings;
+      }).sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+      return docs[0];
     } catch (error) {
       console.error("Error getting enhanced payroll settings:", error);
       return undefined;
@@ -6008,20 +6168,25 @@ export class FirestoreStorage implements IStorage {
 
   async updateEnhancedPayrollSettings(data: any): Promise<EnhancedPayrollSettings> {
     try {
-      const id = data.id || 'default';
+      const activeTenantId = getActiveTenantId();
       const now = new Date();
+
+      const existing = await this.getEnhancedPayrollSettings();
+      const docRef = existing && existing.id !== 'default'
+        ? this.db.collection('enhanced_payroll_settings').doc(existing.id)
+        : this.db.collection('enhanced_payroll_settings').doc();
 
       const settingsData = {
         ...data,
-        id,
+        id: docRef.id,
+        ...(activeTenantId ? { tenantId: activeTenantId } : {}),
         updatedAt: Timestamp.fromDate(now)
       };
 
-      await this.db.collection('enhanced_payroll_settings').doc(id).set(settingsData, { merge: true });
+      await docRef.set(settingsData, { merge: true });
 
       return {
-        ...data,
-        id,
+        ...settingsData,
         updatedAt: now
       } as EnhancedPayrollSettings;
     } catch (error) {

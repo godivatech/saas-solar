@@ -6885,6 +6885,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(201).json(salaryStructure);
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: (error as any).message });
+      }
       console.error("Error creating salary structure:", error);
       res.status(500).json({ message: "Failed to create salary structure" });
     }
@@ -7450,6 +7453,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newStructure = await storage.createEnhancedSalaryStructure(structureData);
       res.status(201).json(newStructure);
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: (error as any).message });
+      }
       console.error("Error creating salary structure:", error);
       res.status(500).json({ message: "Failed to create salary structure" });
     }
@@ -7512,6 +7518,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(updatedPayroll);
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: (error as any).message });
+      }
       console.error("Error updating enhanced payroll:", error);
       res.status(500).json({ message: "Failed to update enhanced payroll" });
     }
