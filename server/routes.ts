@@ -1851,7 +1851,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const permissionGroup = await storage.updatePermissionGroup(req.params.id, req.body);
       res.json(permissionGroup);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating permission group:", error);
       res.status(500).json({ message: "Failed to update permission group" });
     }
@@ -1866,7 +1869,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.deletePermissionGroup(req.params.id);
       res.json({ message: "Permission group deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting permission group:", error);
       res.status(500).json({ message: "Failed to delete permission group" });
     }
@@ -4886,7 +4892,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const documents = await storage.getEmployeeDocuments(req.params.employeeId);
       res.json(documents);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error fetching employee documents:", error);
       res.status(500).json({ message: "Failed to fetch employee documents" });
     }
@@ -4913,7 +4922,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const document = await storage.createEmployeeDocument(documentData);
       res.status(201).json(document);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -4937,7 +4949,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const document = await storage.updateEmployeeDocument(req.params.documentId, req.body);
       res.json(document);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error updating employee document:", error);
       res.status(500).json({ message: "Failed to update employee document" });
     }
@@ -4962,7 +4977,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(204).end();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting employee document:", error);
       res.status(500).json({ message: "Failed to delete employee document" });
     }
@@ -6165,7 +6183,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(role);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -6195,7 +6216,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(updatedRole);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -6388,7 +6412,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ message: "Role deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error deleting role:", error);
       res.status(500).json({ message: "Failed to delete role" });
     }
@@ -6469,7 +6496,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ message: "Role revoked successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error revoking role:", error);
       res.status(500).json({ message: "Failed to revoke role" });
     }
@@ -6553,7 +6583,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ message: "Permission override revoked successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ message: error.message });
+      }
       console.error("Error revoking permission override:", error);
       res.status(500).json({ message: "Failed to revoke permission override" });
     }

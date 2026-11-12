@@ -1489,16 +1489,25 @@ export class FirestoreStorage implements IStorage {
     const docSnap = await deptDoc.get();
     if (!docSnap.exists) return undefined;
     const data = docSnap.data();
-    return { id: docSnap.id, name: data?.name } as Department;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data?.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
+    return { id: docSnap.id, name: data?.name, ...data } as Department;
   }
 
   async getDepartmentByName(name: string): Promise<Department | undefined> {
     const departmentsRef = this.db.collection("departments");
-    const snapshot = await departmentsRef.where("name", "==", name).get();
+    let query: any = departmentsRef.where("name", "==", name);
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return undefined;
     const doc = snapshot.docs[0];
     const data = doc.data();
-    return { id: doc.id, name: data.name } as Department;
+    return { id: doc.id, name: data.name, ...data } as Department;
   }
 
   async listDepartments(): Promise<string[]> {
@@ -1510,19 +1519,32 @@ export class FirestoreStorage implements IStorage {
   ): Promise<Department> {
     const validatedData = insertDepartmentSchema.parse(data);
     const departmentsRef = this.db.collection("departments");
+    const activeTenantId = getActiveTenantId();
     const deptDoc = await departmentsRef.add({
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
 
-    return { id: deptDoc.id, ...validatedData } as Department;
+    return { id: deptDoc.id, ...validatedData, tenantId: (data as any).tenantId || activeTenantId } as Department;
   }
 
   async updateDepartment(
     id: string,
     data: Partial<z.infer<typeof insertDepartmentSchema>>,
   ): Promise<Department> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("departments").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Department belongs to another tenant");
+        }
+      }
+    }
+
     const deptDoc = this.db.collection("departments").doc(id);
     const validatedData = insertDepartmentSchema.partial().parse(data);
 
@@ -1535,10 +1557,21 @@ export class FirestoreStorage implements IStorage {
     if (!updatedDoc.exists) throw new Error("Department not found");
 
     const docData = updatedDoc.data() || {};
-    return { id: updatedDoc.id, name: docData.name } as Department;
+    return { id: updatedDoc.id, name: docData.name, ...docData } as Department;
   }
 
   async deleteDepartment(id: string): Promise<boolean> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("departments").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Department belongs to another tenant");
+        }
+      }
+    }
+
     const deptDoc = this.db.collection("departments").doc(id);
     await deptDoc.delete();
     return true;
@@ -1550,6 +1583,10 @@ export class FirestoreStorage implements IStorage {
     const docSnap = await designationDoc.get();
     if (!docSnap.exists) return undefined;
     const data = docSnap.data();
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data?.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: docSnap.id,
       name: data?.name,
@@ -1562,7 +1599,12 @@ export class FirestoreStorage implements IStorage {
 
   async getDesignationByName(name: string): Promise<Designation | undefined> {
     const designationsRef = this.db.collection("designations");
-    const snapshot = await designationsRef.where("name", "==", name).get();
+    let query: any = designationsRef.where("name", "==", name);
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return undefined;
     const doc = snapshot.docs[0];
     const data = doc.data();
@@ -1579,6 +1621,7 @@ export class FirestoreStorage implements IStorage {
   async listDesignations(): Promise<Designation[]> {
     const designationsCollection = this.db.collection("designations");
     const snapshot = await designationsCollection.orderBy("level", "desc").get();
+    const activeTenantId = getActiveTenantId();
     return snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
@@ -1587,17 +1630,20 @@ export class FirestoreStorage implements IStorage {
         level: data.level || 1,
         description: data.description,
         permissions: data.permissions || [],
-        createdAt: data.createdAt?.toDate() || new Date()
+        createdAt: data.createdAt?.toDate() || new Date(),
+        tenantId: data.tenantId
       } as Designation;
-    });
+    }).filter((d: any) => !activeTenantId || !d.tenantId || d.tenantId === activeTenantId);
   }
 
   async createDesignation(data: z.infer<typeof insertDesignationSchema>): Promise<Designation> {
     const validatedData = insertDesignationSchema.parse(data);
     const designationRef = this.db.collection("designations").doc();
+    const activeTenantId = getActiveTenantId();
 
     const designationData = {
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       createdAt: Timestamp.now()
     };
 
@@ -1611,6 +1657,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async updateDesignation(id: string, data: Partial<z.infer<typeof insertDesignationSchema>>): Promise<Designation> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("designations").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Designation belongs to another tenant");
+        }
+      }
+    }
+
     const designationDoc = this.db.collection("designations").doc(id);
     const updateData = { ...data, updatedAt: Timestamp.now() };
 
@@ -1631,6 +1688,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async deleteDesignation(id: string): Promise<boolean> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("designations").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Designation belongs to another tenant");
+        }
+      }
+    }
+
     const designationDoc = this.db.collection("designations").doc(id);
     await designationDoc.delete();
     return true;
@@ -1642,6 +1710,10 @@ export class FirestoreStorage implements IStorage {
     const docSnap = await permissionDoc.get();
     if (!docSnap.exists) return undefined;
     const data = docSnap.data();
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data?.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: docSnap.id,
       name: data?.name,
@@ -1656,10 +1728,14 @@ export class FirestoreStorage implements IStorage {
 
   async getPermissionsByDepartmentAndDesignation(department: string, designation: string): Promise<PermissionGroup | undefined> {
     const permissionsRef = this.db.collection("permission_groups");
-    const snapshot = await permissionsRef
+    let query: any = permissionsRef
       .where("department", "==", department)
-      .where("designation", "==", designation)
-      .get();
+      .where("designation", "==", designation);
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
 
     if (snapshot.empty) return undefined;
     const doc = snapshot.docs[0];
@@ -1680,6 +1756,7 @@ export class FirestoreStorage implements IStorage {
   async listPermissionGroups(): Promise<PermissionGroup[]> {
     const permissionsCollection = this.db.collection("permission_groups");
     const snapshot = await permissionsCollection.get();
+    const activeTenantId = getActiveTenantId();
     return snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
@@ -1690,17 +1767,20 @@ export class FirestoreStorage implements IStorage {
         permissions: data.permissions || [],
         canApprove: data.canApprove || false,
         maxApprovalAmount: data.maxApprovalAmount || null,
-        createdAt: data.createdAt?.toDate() || new Date()
+        createdAt: data.createdAt?.toDate() || new Date(),
+        tenantId: data.tenantId
       } as PermissionGroup;
-    });
+    }).filter((pg: any) => !activeTenantId || !pg.tenantId || pg.tenantId === activeTenantId);
   }
 
   async createPermissionGroup(data: z.infer<typeof insertPermissionGroupSchema>): Promise<PermissionGroup> {
     const validatedData = insertPermissionGroupSchema.parse(data);
     const permissionRef = this.db.collection("permission_groups").doc();
+    const activeTenantId = getActiveTenantId();
 
     const permissionData = {
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       createdAt: Timestamp.now()
     };
 
@@ -1714,6 +1794,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async updatePermissionGroup(id: string, data: Partial<z.infer<typeof insertPermissionGroupSchema>>): Promise<PermissionGroup> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("permission_groups").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Permission group belongs to another tenant");
+        }
+      }
+    }
+
     const permissionDoc = this.db.collection("permission_groups").doc(id);
     const updateData = { ...data, updatedAt: Timestamp.now() };
 
@@ -1736,6 +1827,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async deletePermissionGroup(id: string): Promise<boolean> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("permission_groups").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Permission group belongs to another tenant");
+        }
+      }
+    }
+
     const permissionDoc = this.db.collection("permission_groups").doc(id);
     await permissionDoc.delete();
     return true;
@@ -3658,6 +3760,10 @@ export class FirestoreStorage implements IStorage {
     if (!docSnap.exists) return undefined;
 
     const data = docSnap.data() || {};
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: docSnap.id,
       ...data,
@@ -3668,7 +3774,12 @@ export class FirestoreStorage implements IStorage {
 
   async getRoleByName(name: string): Promise<Role | undefined> {
     const rolesRef = this.db.collection("roles");
-    const snapshot = await rolesRef.where("name", "==", name).get();
+    let query: any = rolesRef.where("name", "==", name);
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return undefined;
 
     const doc = snapshot.docs[0];
@@ -3684,6 +3795,7 @@ export class FirestoreStorage implements IStorage {
   async listRoles(): Promise<Role[]> {
     const rolesRef = this.db.collection("roles");
     const snapshot = await rolesRef.get();
+    const activeTenantId = getActiveTenantId();
 
     return snapshot.docs.map(doc => {
       const data = doc.data() || {};
@@ -3693,15 +3805,17 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as Role;
-    });
+    }).filter((r: any) => !activeTenantId || !r.tenantId || r.tenantId === activeTenantId);
   }
 
   async createRole(data: z.infer<typeof insertRoleSchema>): Promise<Role> {
     const validatedData = insertRoleSchema.parse(data);
     const roleDoc = this.db.collection("roles").doc();
+    const activeTenantId = getActiveTenantId();
 
     const roleData = {
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     };
@@ -3717,6 +3831,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async updateRole(id: string, data: Partial<z.infer<typeof insertRoleSchema>>): Promise<Role> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection("roles").doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Role belongs to another tenant");
+        }
+      }
+    }
+
     const validatedData = insertRoleSchema.partial().parse(data);
     const roleDoc = this.db.collection("roles").doc(id);
 
@@ -3739,9 +3864,23 @@ export class FirestoreStorage implements IStorage {
 
   async deleteRole(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection("roles").doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Role belongs to another tenant");
+          }
+        }
+      }
+
       await this.db.collection("roles").doc(id).delete();
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error deleting role:", error);
       return false;
     }
@@ -3755,6 +3894,7 @@ export class FirestoreStorage implements IStorage {
       .where("isActive", "==", true)
       .get();
 
+    const activeTenantId = getActiveTenantId();
     return snapshot.docs.map(doc => {
       const data = doc.data() || {};
       return {
@@ -3764,7 +3904,7 @@ export class FirestoreStorage implements IStorage {
         effectiveTo: data.effectiveTo?.toDate() || null,
         createdAt: data.createdAt?.toDate() || new Date(),
       } as UserRoleAssignment;
-    });
+    }).filter((r: any) => !activeTenantId || !r.tenantId || r.tenantId === activeTenantId);
   }
 
   async getRoleAssignment(id: string): Promise<UserRoleAssignment | undefined> {
@@ -3773,6 +3913,10 @@ export class FirestoreStorage implements IStorage {
     if (!docSnap.exists) return undefined;
 
     const data = docSnap.data() || {};
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: docSnap.id,
       ...data,
@@ -3785,9 +3929,11 @@ export class FirestoreStorage implements IStorage {
   async assignUserRole(data: z.infer<typeof insertUserRoleAssignmentSchema>): Promise<UserRoleAssignment> {
     const validatedData = insertUserRoleAssignmentSchema.parse(data);
     const assignmentDoc = this.db.collection("user_role_assignments").doc();
+    const activeTenantId = getActiveTenantId();
 
     const assignmentData = {
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       effectiveFrom: Timestamp.fromDate(validatedData.effectiveFrom),
       effectiveTo: validatedData.effectiveTo ? Timestamp.fromDate(validatedData.effectiveTo) : null,
       createdAt: Timestamp.now(),
@@ -3803,6 +3949,7 @@ export class FirestoreStorage implements IStorage {
 
   async revokeUserRole(userId: string, roleId: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
       const assignmentsRef = this.db.collection("user_role_assignments");
       const snapshot = await assignmentsRef
         .where("userId", "==", userId)
@@ -3812,12 +3959,19 @@ export class FirestoreStorage implements IStorage {
 
       const batch = this.db.batch();
       snapshot.docs.forEach(doc => {
+        const docData = doc.data();
+        if (activeTenantId && docData.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Role assignment belongs to another tenant");
+        }
         batch.update(doc.ref, { isActive: false, updatedAt: Timestamp.now() });
       });
 
       await batch.commit();
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error revoking user role:", error);
       return false;
     }
@@ -3830,6 +3984,7 @@ export class FirestoreStorage implements IStorage {
       .where("userId", "==", userId)
       .get();
 
+    const activeTenantId = getActiveTenantId();
     return snapshot.docs.map(doc => {
       const data = doc.data() || {};
       return {
@@ -3839,15 +3994,17 @@ export class FirestoreStorage implements IStorage {
         effectiveTo: data.effectiveTo?.toDate() || null,
         createdAt: data.createdAt?.toDate() || new Date(),
       } as PermissionOverride;
-    });
+    }).filter((po: any) => !activeTenantId || !po.tenantId || po.tenantId === activeTenantId);
   }
 
   async createPermissionOverride(data: z.infer<typeof insertPermissionOverrideSchema>): Promise<PermissionOverride> {
     const validatedData = insertPermissionOverrideSchema.parse(data);
     const overrideDoc = this.db.collection("permission_overrides").doc();
+    const activeTenantId = getActiveTenantId();
 
     const overrideData = {
       ...validatedData,
+      tenantId: (data as any).tenantId || activeTenantId,
       effectiveFrom: Timestamp.fromDate(validatedData.effectiveFrom),
       effectiveTo: validatedData.effectiveTo ? Timestamp.fromDate(validatedData.effectiveTo) : null,
       createdAt: Timestamp.now(),
@@ -3863,9 +4020,23 @@ export class FirestoreStorage implements IStorage {
 
   async revokePermissionOverride(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection("permission_overrides").doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Permission override belongs to another tenant");
+          }
+        }
+      }
+
       await this.db.collection("permission_overrides").doc(id).delete();
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error revoking permission override:", error);
       return false;
     }
@@ -4377,6 +4548,10 @@ export class FirestoreStorage implements IStorage {
     if (!doc.exists) return undefined;
 
     const data = doc.data()!;
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+      return undefined;
+    }
     return {
       id: doc.id,
       ...data,
@@ -4392,6 +4567,11 @@ export class FirestoreStorage implements IStorage {
 
     if (designation) {
       query = query.where('designation', '==', designation);
+    }
+
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      query = query.where('tenantId', '==', activeTenantId);
     }
 
     const querySnapshot = await query.limit(1).get();
@@ -4410,9 +4590,11 @@ export class FirestoreStorage implements IStorage {
 
   async createAttendancePolicy(data: z.infer<typeof insertAttendancePolicySchema>): Promise<AttendancePolicy> {
     const doc = this.db.collection('attendancePolicies').doc();
+    const activeTenantId = getActiveTenantId();
     const policyData = {
       ...data,
       id: doc.id,
+      tenantId: (data as any).tenantId || activeTenantId,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -4422,6 +4604,17 @@ export class FirestoreStorage implements IStorage {
   }
 
   async updateAttendancePolicy(id: string, data: Partial<z.infer<typeof insertAttendancePolicySchema>>): Promise<AttendancePolicy> {
+    const activeTenantId = getActiveTenantId();
+    if (activeTenantId) {
+      const docSnap = await this.db.collection('attendancePolicies').doc(id).get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+          throw new Error("Unauthorized: Attendance policy belongs to another tenant");
+        }
+      }
+    }
+
     const doc = this.db.collection('attendancePolicies').doc(id);
     const updateData = {
       ...data,
@@ -4440,11 +4633,9 @@ export class FirestoreStorage implements IStorage {
     } as AttendancePolicy;
   }
 
-
-
-
   async listAttendancePolicies(): Promise<AttendancePolicy[]> {
     const querySnapshot = await this.db.collection('attendancePolicies').orderBy('createdAt', 'desc').get();
+    const activeTenantId = getActiveTenantId();
 
     return querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -4454,7 +4645,7 @@ export class FirestoreStorage implements IStorage {
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as AttendancePolicy;
-    });
+    }).filter((ap: any) => !activeTenantId || !ap.tenantId || ap.tenantId === activeTenantId);
   }
 
   // Department Timing Management
@@ -4803,6 +4994,11 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -4835,6 +5031,11 @@ export class FirestoreStorage implements IStorage {
 
       const doc = querySnapshot.docs[0];
       const data = doc.data();
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -4867,6 +5068,11 @@ export class FirestoreStorage implements IStorage {
 
       const doc = querySnapshot.docs[0];
       const data = doc.data();
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -4896,6 +5102,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('personalInfo.displayName')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -4913,7 +5120,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as Employee;
-      });
+      }).filter((emp: any) => !activeTenantId || !emp.tenantId || emp.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employees by department:", error);
       return [];
@@ -4928,6 +5135,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('personalInfo.displayName')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -4945,7 +5153,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as Employee;
-      });
+      }).filter((emp: any) => !activeTenantId || !emp.tenantId || emp.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employees by designation:", error);
       return [];
@@ -4960,6 +5168,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('personalInfo.displayName')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -4977,7 +5186,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as Employee;
-      });
+      }).filter((emp: any) => !activeTenantId || !emp.tenantId || emp.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employees by manager:", error);
       return [];
@@ -4991,6 +5200,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('personalInfo.displayName')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5008,7 +5218,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as Employee;
-      });
+      }).filter((emp: any) => !activeTenantId || !emp.tenantId || emp.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employees by status:", error);
       return [];
@@ -5037,6 +5247,7 @@ export class FirestoreStorage implements IStorage {
 
       query = query.orderBy('personalInfo.displayName');
       const querySnapshot = await query.get();
+      const activeTenantId = getActiveTenantId();
 
       let employees = querySnapshot.docs.map((doc: any) => {
         const data = doc.data();
@@ -5055,7 +5266,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as Employee;
-      });
+      }).filter((emp: any) => !activeTenantId || !emp.tenantId || emp.tenantId === activeTenantId);
 
       // Apply search filter client-side for better text matching
       if (filters?.search) {
@@ -5080,10 +5291,12 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = (data as any).id || this.db.collection('employees').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       const employeeData = {
         ...data,
         id,
+        tenantId: (data as any).tenantId || activeTenantId,
         createdAt: now,
         updatedAt: now
       };
@@ -5098,6 +5311,17 @@ export class FirestoreStorage implements IStorage {
 
   async updateEmployee(id: string, data: Partial<z.infer<typeof insertEmployeeSchema>>): Promise<Employee> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('employees').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Employee belongs to another tenant");
+          }
+        }
+      }
+
       const updateData = {
         ...data,
         updatedAt: new Date()
@@ -5110,6 +5334,9 @@ export class FirestoreStorage implements IStorage {
       if (!updated) throw new Error('Employee not found after update');
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating employee:", error);
       throw error;
     }
@@ -5117,6 +5344,17 @@ export class FirestoreStorage implements IStorage {
 
   async deleteEmployee(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('employees').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Employee belongs to another tenant");
+          }
+        }
+      }
+
       // Soft delete by setting isActive to false
       await this.db.collection('employees').doc(id).update({
         isActive: false,
@@ -5125,6 +5363,9 @@ export class FirestoreStorage implements IStorage {
       });
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error deleting employee:", error);
       return false;
     }
@@ -5137,6 +5378,11 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -5158,6 +5404,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('createdAt', 'desc')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5168,7 +5415,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as EmployeeDocument;
-      });
+      }).filter((doc: any) => !activeTenantId || !doc.tenantId || doc.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employee documents:", error);
       return [];
@@ -5183,6 +5430,7 @@ export class FirestoreStorage implements IStorage {
         .orderBy('createdAt', 'desc')
         .get();
 
+      const activeTenantId = getActiveTenantId();
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -5193,7 +5441,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as EmployeeDocument;
-      });
+      }).filter((doc: any) => !activeTenantId || !doc.tenantId || doc.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error getting employee documents by type:", error);
       return [];
@@ -5204,10 +5452,12 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = (data as any).id || this.db.collection('employee_documents').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       const documentData = {
         ...data,
         id,
+        tenantId: (data as any).tenantId || activeTenantId,
         createdAt: now,
         updatedAt: now
       };
@@ -5222,6 +5472,17 @@ export class FirestoreStorage implements IStorage {
 
   async updateEmployeeDocument(id: string, data: Partial<z.infer<typeof insertEmployeeDocumentSchema>>): Promise<EmployeeDocument> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('employee_documents').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Employee document belongs to another tenant");
+          }
+        }
+      }
+
       const updateData = {
         ...data,
         updatedAt: new Date()
@@ -5233,6 +5494,9 @@ export class FirestoreStorage implements IStorage {
       if (!updated) throw new Error('Employee document not found after update');
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating employee document:", error);
       throw error;
     }
@@ -5240,9 +5504,23 @@ export class FirestoreStorage implements IStorage {
 
   async deleteEmployeeDocument(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('employee_documents').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Employee document belongs to another tenant");
+          }
+        }
+      }
+
       await this.db.collection('employee_documents').doc(id).delete();
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error deleting employee document:", error);
       return false;
     }
@@ -5389,6 +5667,17 @@ export class FirestoreStorage implements IStorage {
 
   async updatePerformanceReview(id: string, data: Partial<z.infer<typeof insertPerformanceReviewSchema>>): Promise<PerformanceReview> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('performance_reviews').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Performance review belongs to another tenant");
+          }
+        }
+      }
+
       const existing = await this.getPerformanceReview(id);
       if (!existing) throw new Error('Performance review not found');
 
@@ -5403,6 +5692,9 @@ export class FirestoreStorage implements IStorage {
       if (!updated) throw new Error('Performance review not found after update');
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating performance review:", error);
       throw error;
     }
@@ -5410,12 +5702,26 @@ export class FirestoreStorage implements IStorage {
 
   async deletePerformanceReview(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('performance_reviews').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Performance review belongs to another tenant");
+          }
+        }
+      }
+
       const existing = await this.getPerformanceReview(id);
       if (!existing) return false;
 
       await this.db.collection('performance_reviews').doc(id).delete();
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error deleting performance review:", error);
       return false;
     }
@@ -5731,6 +6037,11 @@ export class FirestoreStorage implements IStorage {
       if (!doc.exists) return undefined;
 
       const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+
       return {
         id: doc.id,
         ...data,
@@ -5749,6 +6060,8 @@ export class FirestoreStorage implements IStorage {
         .where('isActive', '==', true)
         .orderBy('sortOrder', 'asc')
         .get();
+
+      const activeTenantId = getActiveTenantId();
 
       if (querySnapshot.empty) {
         // Return default field configs
@@ -5792,7 +6105,7 @@ export class FirestoreStorage implements IStorage {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date()
         } as PayrollFieldConfig;
-      });
+      }).filter((cfg: any) => !activeTenantId || !cfg.tenantId || cfg.tenantId === activeTenantId);
     } catch (error) {
       console.error("Error listing payroll field configs:", error);
       return [];
@@ -5803,10 +6116,12 @@ export class FirestoreStorage implements IStorage {
     try {
       const id = (data as any).id || this.db.collection('payroll_field_configs').doc().id;
       const now = new Date();
+      const activeTenantId = getActiveTenantId();
 
       const configData = {
         ...data,
         id,
+        tenantId: (data as any).tenantId || activeTenantId,
         createdAt: Timestamp.fromDate(now),
         updatedAt: Timestamp.fromDate(now)
       };
@@ -5827,6 +6142,17 @@ export class FirestoreStorage implements IStorage {
 
   async updatePayrollFieldConfig(id: string, data: Partial<PayrollFieldConfig>): Promise<PayrollFieldConfig> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('payroll_field_configs').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Payroll field config belongs to another tenant");
+          }
+        }
+      }
+
       const updateData = {
         ...data,
         updatedAt: Timestamp.fromDate(new Date())
@@ -5839,6 +6165,9 @@ export class FirestoreStorage implements IStorage {
 
       return updated;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error updating payroll field config:", error);
       throw error;
     }
@@ -5846,12 +6175,26 @@ export class FirestoreStorage implements IStorage {
 
   async deletePayrollFieldConfig(id: string): Promise<boolean> {
     try {
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId) {
+        const docSnap = await this.db.collection('payroll_field_configs').doc(id).get();
+        if (docSnap.exists) {
+          const docData = docSnap.data();
+          if (docData?.tenantId && docData.tenantId !== activeTenantId) {
+            throw new Error("Unauthorized: Payroll field config belongs to another tenant");
+          }
+        }
+      }
+
       await this.db.collection('payroll_field_configs').doc(id).update({
         isActive: false,
         updatedAt: Timestamp.fromDate(new Date())
       });
       return true;
     } catch (error) {
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
       console.error("Error deleting payroll field config:", error);
       return false;
     }

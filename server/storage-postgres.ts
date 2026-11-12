@@ -5633,7 +5633,7 @@ export class PostgresStorage implements IStorage {
         lastUpdatedBy: data.lastUpdatedBy || null
       }).returning();
 
-      try { await this.fallback.createEmployee({ ...data, id: created.id }); } catch (_) { }
+      try { await this.fallback.createEmployee({ ...data, id: created.id, tenantId }); } catch (_) { }
       return {
         id: created.id,
         employeeId: created.employeeId,
@@ -5739,6 +5739,10 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] updateEmployee error:", e);
     }
+    const fallbackEmp = this.fallback?.getEmployee ? await this.fallback.getEmployee(id) : undefined;
+    if (fallbackEmp && (fallbackEmp as any).tenantId && (fallbackEmp as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Employee belongs to another tenant");
+    }
     return this.fallback.updateEmployee(id, data);
   }
 
@@ -5829,7 +5833,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getEmployeeDocument error:", e);
     }
-    return this.fallback.getEmployeeDocument(id);
+    const fallbackDoc = await this.fallback.getEmployeeDocument(id);
+    if (fallbackDoc && (fallbackDoc as any).tenantId && (fallbackDoc as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackDoc;
   }
 
   async getEmployeeDocuments(employeeId: string): Promise<EmployeeDocument[]> {
@@ -5996,7 +6004,7 @@ export class PostgresStorage implements IStorage {
         notes: data.notes || null
       }).returning();
 
-      try { await this.fallback.createEmployeeDocument({ ...data, id: created.id }); } catch (_) { }
+      try { await this.fallback.createEmployeeDocument({ ...data, id: created.id, tenantId }); } catch (_) { }
       return {
         id: created.id,
         employeeId: created.employeeId,
@@ -6079,6 +6087,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updateEmployeeDocument error:", e);
+    }
+    const fallbackDoc = await this.fallback.getEmployeeDocument(id);
+    if (fallbackDoc && (fallbackDoc as any).tenantId && (fallbackDoc as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Employee document belongs to another tenant");
     }
     return this.fallback.updateEmployeeDocument(id, data);
   }
@@ -6405,7 +6417,7 @@ export class PostgresStorage implements IStorage {
         nextReviewDate: data.nextReviewDate ? new Date(data.nextReviewDate) : null
       }).returning();
 
-      try { await this.fallback.createPerformanceReview({ ...data, id: created.id }); } catch (_) { }
+      try { await this.fallback.createPerformanceReview({ ...data, id: created.id, tenantId }); } catch (_) { }
       const rp: any = created.reviewPeriod || {};
       return {
         id: created.id,
@@ -6512,6 +6524,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updatePerformanceReview error:", e);
+    }
+    const fallbackPR = this.fallback?.getPerformanceReview ? await this.fallback.getPerformanceReview(id) : undefined;
+    if (fallbackPR && (fallbackPR as any).tenantId && (fallbackPR as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Performance review belongs to another tenant");
     }
     return this.fallback.updatePerformanceReview(id, data);
   }
@@ -6667,7 +6683,7 @@ export class PostgresStorage implements IStorage {
         permissions: data.permissions || []
       }).returning();
 
-      try { await this.fallback.createDesignation(data); } catch (_) { }
+      try { await this.fallback.createDesignation({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name as any,
@@ -6798,7 +6814,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getPermissionGroup error:", e);
     }
-    return (this.fallback as any)?.getPermissionGroup ? (this.fallback as any).getPermissionGroup(id) : undefined;
+    const fallbackPg = (this.fallback as any)?.getPermissionGroup ? await (this.fallback as any).getPermissionGroup(id) : undefined;
+    if (fallbackPg && (fallbackPg as any).tenantId && (fallbackPg as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackPg;
   }
 
   async getPermissionsByDepartmentAndDesignation(department: string, designation: string): Promise<PermissionGroup | undefined> {
@@ -6864,7 +6884,7 @@ export class PostgresStorage implements IStorage {
         maxApprovalAmount: data.maxApprovalAmount != null ? String(data.maxApprovalAmount) : null
       }).returning();
 
-      try { await this.fallback.createPermissionGroup(data); } catch (_) { }
+      try { await this.fallback.createPermissionGroup({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -6924,6 +6944,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updatePermissionGroup error:", e);
+    }
+    const fallbackPg = (this.fallback as any)?.getPermissionGroup ? await (this.fallback as any).getPermissionGroup(id) : undefined;
+    if (fallbackPg && (fallbackPg as any).tenantId && (fallbackPg as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Permission group belongs to another tenant");
     }
     return (this.fallback as any)?.updatePermissionGroup ? (this.fallback as any).updatePermissionGroup(id, data) : undefined;
   }
@@ -7057,7 +7081,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getRoleByName error:", e);
     }
-    return this.fallback.getRoleByName(name);
+    const fallbackRole = await this.fallback.getRoleByName(name);
+    if (fallbackRole && (fallbackRole as any).tenantId && (fallbackRole as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackRole;
   }
 
   async listRoles(): Promise<Role[]> {
@@ -7102,7 +7130,7 @@ export class PostgresStorage implements IStorage {
         approvalLimits: data.approvalLimits || null
       }).returning();
 
-      try { await this.fallback.createRole(data); } catch (_) { }
+      try { await this.fallback.createRole({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7165,6 +7193,10 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updateRole error:", e);
+    }
+    const fallbackRole = (this.fallback as any)?.getRole ? await (this.fallback as any).getRole(id) : undefined;
+    if (fallbackRole && fallbackRole.tenantId && fallbackRole.tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Role belongs to another tenant");
     }
     return this.fallback.updateRole(id, data);
   }
@@ -7318,7 +7350,7 @@ export class PostgresStorage implements IStorage {
         isActive: data.isActive !== undefined ? data.isActive : true
       }).returning();
 
-      try { await this.fallback.assignUserRole(data); } catch (_) { }
+      try { await this.fallback.assignUserRole({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         userId: created.userId,
@@ -7446,7 +7478,7 @@ export class PostgresStorage implements IStorage {
         effectiveTo: data.effectiveTo ? new Date(data.effectiveTo) : null
       }).returning();
 
-      try { await this.fallback.createPermissionOverride(data); } catch (_) { }
+      try { await this.fallback.createPermissionOverride({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         userId: created.userId,
@@ -7653,7 +7685,7 @@ export class PostgresStorage implements IStorage {
         createdBy: data.createdBy || "system"
       }).returning();
 
-      try { await this.fallback.createAttendancePolicy(data); } catch (_) { }
+      try { await this.fallback.createAttendancePolicy({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7794,7 +7826,11 @@ export class PostgresStorage implements IStorage {
     } catch (e) {
       console.error("[PostgresStorage] getPayrollFieldConfig error:", e);
     }
-    return (this.fallback as any)?.getPayrollFieldConfig ? (this.fallback as any).getPayrollFieldConfig(id) : undefined;
+    const fallbackCfg = (this.fallback as any)?.getPayrollFieldConfig ? await (this.fallback as any).getPayrollFieldConfig(id) : undefined;
+    if (fallbackCfg && (fallbackCfg as any).tenantId && (fallbackCfg as any).tenantId !== (await this.getTenantId())) {
+      return undefined;
+    }
+    return fallbackCfg;
   }
 
   async listPayrollFieldConfigs(filters?: any): Promise<PayrollFieldConfig[]> {
@@ -7844,7 +7880,7 @@ export class PostgresStorage implements IStorage {
         isActive: data.isActive !== undefined ? data.isActive : true
       }).returning();
 
-      try { await this.fallback.createPayrollFieldConfig({ ...data, id: created.id }); } catch (_) { }
+      try { await this.fallback.createPayrollFieldConfig({ ...data, id: created.id, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
@@ -7920,6 +7956,10 @@ export class PostgresStorage implements IStorage {
       }
       console.error("[PostgresStorage] updatePayrollFieldConfig error:", e);
     }
+    const fallbackCfg = (this.fallback as any)?.getPayrollFieldConfig ? await (this.fallback as any).getPayrollFieldConfig(id) : undefined;
+    if (fallbackCfg && (fallbackCfg as any).tenantId && (fallbackCfg as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Payroll field config belongs to another tenant");
+    }
     return (this.fallback as any)?.updatePayrollFieldConfig ? (this.fallback as any).updatePayrollFieldConfig(id, data) : undefined;
   }
 
@@ -7952,7 +7992,11 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] deletePayrollFieldConfig error:", e);
-      return (this.fallback as any)?.deletePayrollFieldConfig ? (this.fallback as any).deletePayrollFieldConfig(id) : false;
+      return false;
+    }
+    const fallbackCfg = (this.fallback as any)?.getPayrollFieldConfig ? await (this.fallback as any).getPayrollFieldConfig(id) : undefined;
+    if (fallbackCfg && (fallbackCfg as any).tenantId && (fallbackCfg as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Payroll field config belongs to another tenant");
     }
     return (this.fallback as any)?.deletePayrollFieldConfig ? (this.fallback as any).deletePayrollFieldConfig(id) : false;
   }
@@ -8051,7 +8095,7 @@ export class PostgresStorage implements IStorage {
         isActive: data.isActive !== undefined ? data.isActive : true,
       }).returning();
 
-      try { await (this.fallback as any)?.createDepartment?.(data); } catch (_) { }
+      try { await (this.fallback as any)?.createDepartment?.({ ...data, tenantId }); } catch (_) { }
       return {
         id: created.id,
         name: created.name,
