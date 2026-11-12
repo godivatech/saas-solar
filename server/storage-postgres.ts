@@ -4462,15 +4462,47 @@ export class PostgresStorage implements IStorage {
         isRead: Boolean(data.isRead ?? false),
         metadata: data.metadata || {}
       }).returning();
-      try { await this.fallback.createNotification(data); } catch (_) { }
+      try { await this.fallback.createNotification({ ...data, tenantId }); } catch (_) { }
       return n;
     } catch (e) {
       if ((e as any)?.message?.includes("Unauthorized")) {
         throw e;
       }
       console.error("[PostgresStorage] createNotification error:", e);
-      return this.fallback.createNotification(data);
+      return this.fallback.createNotification({ ...data, tenantId: await this.getTenantId() });
     }
+  }
+
+  async getNotification(id: string): Promise<any | undefined> {
+    try {
+      const tenantId = await this.getTenantId();
+      const [n] = await pgDb
+        .select()
+        .from(pgNotifications)
+        .where(and(
+          eq(pgNotifications.id, id),
+          eq(pgNotifications.tenantId, tenantId)
+        ))
+        .limit(1);
+
+      if (n) return n;
+
+      const [otherTenantNotif] = await pgDb
+        .select({ id: pgNotifications.id })
+        .from(pgNotifications)
+        .where(and(
+          eq(pgNotifications.id, id),
+          ne(pgNotifications.tenantId, tenantId)
+        ))
+        .limit(1);
+
+      if (otherTenantNotif) {
+        return undefined;
+      }
+    } catch (e) {
+      console.error("[PostgresStorage] getNotification error:", e);
+    }
+    return this.fallback?.getNotification ? this.fallback.getNotification(id) : undefined;
   }
 
   async getNotifications(userId: string): Promise<any[]> {
@@ -4541,8 +4573,12 @@ export class PostgresStorage implements IStorage {
         throw e;
       }
       console.error("[PostgresStorage] updateNotification error:", e);
-      return this.fallback.updateNotification(id, updates);
     }
+    const fallbackN = this.fallback?.getNotification ? await this.fallback.getNotification(id) : undefined;
+    if (fallbackN && (fallbackN as any).tenantId && (fallbackN as any).tenantId !== (await this.getTenantId())) {
+      throw new Error("Unauthorized: Notification belongs to another tenant");
+    }
+    return this.fallback.updateNotification(id, updates);
   }
 
   async deleteExpiredNotifications(expiryDate: Date): Promise<void> {

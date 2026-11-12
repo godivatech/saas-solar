@@ -837,6 +837,7 @@ export interface IStorage {
   getUsersByReportingManager(managerId: string): Promise<User[]>;
   // Notifications
   createNotification(notification: any): Promise<Notification>;
+  getNotification(id: string): Promise<Notification | undefined>;
   getNotifications(userId: string, filters?: any): Promise<Notification[]>;
   updateNotification(id: string, updates: any): Promise<Notification>;
   deleteExpiredNotifications(date: Date): Promise<void>;
@@ -1153,6 +1154,10 @@ export interface IStorage {
 
 export class FirestoreStorage implements IStorage {
   private db: Firestore;
+
+  get activeTenantId(): string | undefined {
+    return getActiveTenantId();
+  }
 
   async listAllTenants(): Promise<any[]> {
     return [{ id: "adc11a73-7ef8-417b-b930-28d1d855d707", name: "Default Tenant" }];
@@ -2605,30 +2610,25 @@ export class FirestoreStorage implements IStorage {
 
   async listIncompleteAttendance(date: Date): Promise<Attendance[]> {
     try {
-      // FIXED: Firestore where("field", "==", null) doesn't work for missing/undefined fields
-      // Solution: Get ALL attendance records, filter everything in-memory
-
       // UTC-safe date boundaries
       const startOfDay = getUTCMidnight(date);
       const endOfDay = getUTCEndOfDay(date);
+      const activeTenantId = getActiveTenantId();
 
-      console.log(`[STORAGE] Searching for incomplete attendance on ${date.toISOString().split('T')[0]}`);
-      console.log(`[STORAGE] Date range:`, { start: startOfDay.toISOString(), end: endOfDay.toISOString() });
+      let attendanceRef: any = this.db.collection("attendance");
+      if (activeTenantId) {
+        attendanceRef = attendanceRef.where("tenantId", "==", activeTenantId);
+      }
 
-      const attendanceRef = this.db.collection("attendance");
-
-      // Get ALL attendance records (no filter on checkOutTime)
-      // We'll filter in-memory for incomplete ones
       const snapshot = await attendanceRef.get();
 
-      console.log(`[STORAGE] Total attendance records in database: ${snapshot.docs.length}`);
-
       const incomplete = snapshot.docs
-        .map(doc => {
+        .map((doc: any) => {
           const data = doc.data() || {};
           return this.convertFirestoreToAttendance({ id: doc.id, ...data });
         })
         .filter(record => {
+          if (activeTenantId && (record as any).tenantId && (record as any).tenantId !== activeTenantId) return false;
           // Filter for records on the specified date with check-in but NO check-out
           if (!record.checkInTime) return false; // Must have checked in
           if (record.checkOutTime) return false; // Must NOT have checked out
@@ -2637,20 +2637,9 @@ export class FirestoreStorage implements IStorage {
           const recordDate = record.date.getTime();
           const isInDateRange = recordDate >= startOfDay.getTime() && recordDate <= endOfDay.getTime();
 
-          if (isInDateRange) {
-            console.log(`[STORAGE] Found incomplete record:`, {
-              id: record.id,
-              userId: record.userId,
-              date: record.date?.toISOString().split('T')[0],
-              checkInTime: record.checkInTime?.toISOString(),
-              checkOutTime: record.checkOutTime
-            });
-          }
-
           return isInDateRange;
         });
 
-      console.log(`[STORAGE] Found ${incomplete.length} incomplete attendance records for ${date.toISOString().split('T')[0]}`);
       return incomplete;
     } catch (error) {
       console.error("Error listing incomplete attendance:", error);
@@ -6739,6 +6728,25 @@ export class FirestoreStorage implements IStorage {
     }
   }
 
+  async getNotification(id: string): Promise<Notification | undefined> {
+    try {
+      const doc = await this.db.collection('notifications').doc(id).get();
+      if (!doc.exists) return undefined;
+      const data = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) {
+        return undefined;
+      }
+      return this.convertFirestoreToNotification({
+        id: doc.id,
+        ...data
+      });
+    } catch (error) {
+      console.error("Error getting notification:", error);
+      return undefined;
+    }
+  }
+
   async getNotifications(userId: string, filters: any = {}): Promise<Notification[]> {
     try {
       const activeTenantId = getActiveTenantId();
@@ -6780,6 +6788,16 @@ export class FirestoreStorage implements IStorage {
 
   async updateNotification(id: string, updates: any): Promise<Notification> {
     try {
+      const doc = await this.db.collection('notifications').doc(id).get();
+      if (!doc.exists) {
+        throw new Error("Notification not found");
+      }
+      const existingData = doc.data()!;
+      const activeTenantId = getActiveTenantId();
+      if (activeTenantId && existingData.tenantId && existingData.tenantId !== activeTenantId) {
+        throw new Error("Unauthorized: Notification belongs to another tenant");
+      }
+
       const updateData = {
         ...updates,
         updatedAt: Timestamp.fromDate(new Date())
@@ -6801,30 +6819,49 @@ export class FirestoreStorage implements IStorage {
 
       await this.db.collection('notifications').doc(id).update(updateData);
 
-      const doc = await this.db.collection('notifications').doc(id).get();
-      if (!doc.exists) {
-        throw new Error("Notification not found");
-      }
+      const updatedDoc = await this.db.collection('notifications').doc(id).get();
       return this.convertFirestoreToNotification({
-        id: doc.id,
-        ...doc.data()
+        id: updatedDoc.id,
+        ...updatedDoc.data()
       });
     } catch (error) {
-      console.error("Error updating notification:", error);
+      if ((error as any)?.message?.includes("Unauthorized")) {
+        throw error;
+      }
+      if ((error as any)?.message !== "Notification not found") {
+        console.error("Error updating notification:", error);
+      }
       throw error;
     }
   }
 
   async deleteExpiredNotifications(date: Date = new Date()): Promise<void> {
     try {
-      const snapshot = await this.db.collection('notifications')
-        .where('expiresAt', '<=', Timestamp.fromDate(date))
-        .get();
+      const activeTenantId = getActiveTenantId();
+      let query: any = this.db.collection('notifications');
 
-      const batch = this.db.batch();
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-      console.log(`[CLEANUP] Deleted ${snapshot.docs.length} expired notifications`);
+      if (activeTenantId) {
+        query = query.where('tenantId', '==', activeTenantId);
+      } else {
+        query = query.where('expiresAt', '<=', Timestamp.fromDate(date));
+      }
+
+      const snapshot = await query.get();
+      const cutoff = date.getTime();
+      const docsToDelete = snapshot.docs.filter((doc: any) => {
+        const data = doc.data();
+        if (activeTenantId && data.tenantId && data.tenantId !== activeTenantId) return false;
+        if (!data.expiresAt) return false;
+        const expiresTime = data.expiresAt.toDate ? data.expiresAt.toDate().getTime() : new Date(data.expiresAt).getTime();
+        return expiresTime <= cutoff;
+      });
+
+      if (docsToDelete.length > 0) {
+        const batch = this.db.batch();
+        docsToDelete.forEach((doc: any) => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`[CLEANUP] Deleted ${docsToDelete.length} expired notifications`);
+      }
     } catch (error) {
       console.error("Error deleting expired notifications:", error);
     }
@@ -6835,29 +6872,33 @@ export class FirestoreStorage implements IStorage {
   // ============================================
 
   async listAttendanceByReviewStatus(status: 'pending' | 'accepted' | 'adjusted' | 'rejected'): Promise<Attendance[]> {
-    // FIXED: Removed .orderBy("autoCorrectedAt") to avoid requiring Firestore composite index
-    // Records will still be retrieved, just not sorted by auto-correction time
-    const snapshot = await this.db.collection("attendance")
-      .where("adminReviewStatus", "==", status)
-      .get();
+    const activeTenantId = getActiveTenantId();
+    let query: any = this.db.collection("attendance")
+      .where("adminReviewStatus", "==", status);
+    if (activeTenantId) {
+      query = query.where("tenantId", "==", activeTenantId);
+    }
+    const snapshot = await query.get();
 
     // Enrich with user details
-    const attendancePromises = snapshot.docs.map(async doc => {
-      const data = doc.data();
-      const attendance = this.convertFirestoreToAttendance({ id: doc.id, ...data });
+    const attendancePromises = snapshot.docs
+      .filter((doc: any) => !activeTenantId || !doc.data()?.tenantId || doc.data()?.tenantId === activeTenantId)
+      .map(async (doc: any) => {
+        const data = doc.data();
+        const attendance = this.convertFirestoreToAttendance({ id: doc.id, ...data });
 
-      // Get user details
-      if (attendance.userId) {
-        const user = await this.getUser(attendance.userId);
-        return {
-          ...attendance,
-          userName: user?.displayName || `User #${attendance.userId}`,
-          userDepartment: user?.department || null,
-        };
-      }
+        // Get user details
+        if (attendance.userId) {
+          const user = await this.getUser(attendance.userId);
+          return {
+            ...attendance,
+            userName: user?.displayName || `User #${attendance.userId}`,
+            userDepartment: user?.department || null,
+          };
+        }
 
-      return attendance;
-    });
+        return attendance;
+      });
 
     // Sort in memory after fetching (client-side sort)
     const results = await Promise.all(attendancePromises);

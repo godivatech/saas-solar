@@ -9083,6 +9083,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Notification dismissed"
       });
     } catch (error: any) {
+      if (error?.message?.includes("Unauthorized")) {
+        return res.status(403).json({ success: false, message: error.message });
+      }
       console.error("[NOTIFICATIONS] Error dismissing notification:", error);
       res.status(500).json({
         success: false,
